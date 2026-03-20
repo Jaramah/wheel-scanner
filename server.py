@@ -86,7 +86,7 @@ def confidence_label(score):
 # ==========================================================
 # CONFIG - CALIBRATED FILTERS
 # ==========================================================
-CSV_FILE = "sp500.txt"
+CSV_FILE = "sp500test.txt"
 OUTPUT_FILE = "wheel_trades_calibrated.csv"
 
 RISK_FREE_RATE = 0.05
