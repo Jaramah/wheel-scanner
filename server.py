@@ -1,5 +1,5 @@
-﻿# ==========================================================
-# IBKR Wheel Strategy Scanner — CALIBRATED VERSION
+# ==========================================================
+# IBKR Wheel Strategy Scanner – CALIBRATED VERSION
 # ==========================================================
 
 import warnings
@@ -9,6 +9,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime
 import math
+import time  # <-- ADDED FOR DELAYS
 
 # ==========================================================
 # SYMBOL NORMALIZATION
@@ -129,7 +130,7 @@ print(f"Scanning {len(symbols)} symbols...")
 for idx, symbol in enumerate(symbols):
     if idx % 50 == 0:
         print(f"Progress: {idx}/{len(symbols)} symbols ({len(results)} trades found)")
-    
+
     try:
         norm_symbol = normalize_symbol(symbol)
 
@@ -137,6 +138,7 @@ for idx, symbol in enumerate(symbols):
         hist = stock.history(period="1y")
 
         if len(hist) < 200:
+            time.sleep(0.5)  # <-- DELAY EVEN ON SKIP
             continue
 
         close = hist["Close"]
@@ -158,15 +160,18 @@ for idx, symbol in enumerate(symbols):
         # Stock volume check
         avg_volume = hist["Volume"].tail(20).mean()
         if avg_volume < MIN_STOCK_VOLUME:
+            time.sleep(0.5)  # <-- DELAY EVEN ON SKIP
             continue
 
         # ----------------------
         # HARD FILTERS (RELAXED)
         # ----------------------
         if rsi_val > 75 or rsi_val < 25:  # More permissive
+            time.sleep(0.5)  # <-- DELAY EVEN ON SKIP
             continue
 
         if dist_from_high < 0.02:  # Slightly tighter
+            time.sleep(0.5)  # <-- DELAY EVEN ON SKIP
             continue
 
         # ----------------------
@@ -222,7 +227,7 @@ for idx, symbol in enumerate(symbols):
 
                     # Calculate OTM percentage
                     otm_pct = ((S - K) / S) * 100
-                    
+
                     # Skip strikes too far OTM
                     if otm_pct > MAX_OTM_PCT:
                         continue
@@ -231,7 +236,7 @@ for idx, symbol in enumerate(symbols):
                     if K <= 0:
                         continue
                     premium_pct = (premium / K) * 100
-                    
+
                     # Skip very low premium trades
                     if premium_pct < MIN_PREMIUM_PCT:
                         continue
@@ -245,9 +250,9 @@ for idx, symbol in enumerate(symbols):
                     mid = (bid + ask) / 2
                     if mid <= 0:
                         continue
-                    
+
                     spread_pct = (ask - bid) / mid
-                    
+
                     if spread_pct > MAX_REL_SPREAD:
                         continue
 
@@ -267,15 +272,15 @@ for idx, symbol in enumerate(symbols):
                     score = 0
 
                     # 1. TREND (5 points max)
-                    if S > sma50: 
+                    if S > sma50:
                         score += 2
-                    if sma20 > sma50: 
+                    if sma20 > sma50:
                         score += 2
-                    if S > sma20: 
+                    if S > sma20:
                         score += 1
 
                     # 2. EARNINGS SAFETY (2 points)
-                    if earnings_ok: 
+                    if earnings_ok:
                         score += 2
 
                     # 3. DTE SCORING (3 points max)
@@ -312,7 +317,7 @@ for idx, symbol in enumerate(symbols):
                         score += 1
                     elif iv_rank > 0.60:
                         score -= 1
-                    
+
                     if iv >= 0.30:
                         score += 1
 
@@ -341,7 +346,7 @@ for idx, symbol in enumerate(symbols):
                         score += 2
                     elif vol >= 100 and oi >= 300:
                         score += 1
-                    
+
                     if avg_volume >= 1_000_000:
                         score += 1
 
@@ -401,8 +406,17 @@ for idx, symbol in enumerate(symbols):
                 except Exception:
                     continue
 
-    except Exception:
-        continue
+    except Exception as e:
+        print(f"Failed to get ticker '{symbol}' reason: {e}")
+        print(f"{symbol}: No price data found, symbol may be delisted (period=1y)")
+    
+    # <-- MAIN DELAY: Wait 1 second between each symbol
+    time.sleep(1)
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    print(f"Starting Wheel Scanner API on port {port}...")
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
 # ==========================================================
 # OUTPUT
@@ -418,21 +432,24 @@ if not out.empty:
 out.to_csv(OUTPUT_FILE, index=False)
 
 print("\n" + "=" * 60)
-print("IBKR WHEEL SCANNER — CALIBRATED VERSION COMPLETE")
+print("IBKR WHEEL SCANNER – CALIBRATED VERSION COMPLETE")
 print("=" * 60)
 print(f"Total trades found: {len(out)}")
+
+
+
 
 if not out.empty:
     print(f"\nScore range: {out['RawScore'].min():.1f}-{out['RawScore'].max():.1f} (raw)")
     print(f"Normalized range: {out['NormScore'].min():.1f}-{out['NormScore'].max():.1f}%")
-    
+
     print(f"\nGrade distribution:")
     print(out['Grade'].value_counts().to_string())
-    
+
     print(f"\nTop 10 trades by score:")
     top_cols = ['Symbol', 'Strike', 'DTE', 'Delta', 'PremiumYield_%', 'AnnualReturn_%', 'NormScore', 'Grade']
     print(out[top_cols].head(10).to_string(index=False))
-    
+
     print(f"\nTop 10 trades by annualized return:")
     print(out.sort_values('AnnualReturn_%', ascending=False)[top_cols].head(10).to_string(index=False))
 
