@@ -24,10 +24,10 @@ def normalize_symbol(sym):
 # ==========================================================
 # LOAD INDEX MEMBERSHIP
 # ==========================================================
-with open("sp500.txt") as f:
+with open("sp500test.txt") as f:
     SP500 = set(normalize_symbol(line) for line in f if line.strip())
 
-with open("nasdaq100.txt") as f:
+with open("nasdaq100test.txt") as f:
     NASDAQ100 = set(normalize_symbol(line) for line in f if line.strip())
 
 # ==========================================================
