@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# requirements_bot.txt  —  AI Crypto Trading Bot dependencies
+# Install with: pip install -r requirements_bot.txt
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Exchange connectivity
+ccxt>=4.2.90
+
+# Market data & indicator calculation
+pandas>=2.1.0,<3.0.0
+# NOTE: pandas-ta's PyPI release has a known compatibility issue with pandas 2.x.
+# If `import pandas_ta` raises AttributeError, install the development snapshot:
+#   pip install git+https://github.com/twopirllc/pandas-ta.git@main
+pandas-ta>=0.3.14b0
+
+# WebSocket live price feed
+websocket-client>=1.7.0
+
+# HTTP client (Telegram + Claude API)
+requests>=2.31.0
+
+# Environment variable loading from .env
+python-dotenv>=1.0.0
+
+# Optional — improves numeric performance used by pandas-ta
+numpy>=1.26.0,<3.0.0
