@@ -307,8 +307,8 @@ class ExchangeManager:
 
     def __init__(self) -> None:
         self.exchange = ccxt.binanceusdm({
-            "apiKey":  EXCHANGE_API_KEY,
-            "secret":  EXCHANGE_API_SECRET,
+            "apiKey":  "" if DRY_RUN else EXCHANGE_API_KEY,
+            "secret":  "" if DRY_RUN else EXCHANGE_API_SECRET,
             "options": {"defaultType": "future", "adjustForTimeDifference": True},
             "enableRateLimit": True,
         })
