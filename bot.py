@@ -22,7 +22,6 @@ from enum import Enum
 import requests
 import ccxt
 import pandas as pd
-import websocket  # websocket-client
 
 # Load .env file if present (requires python-dotenv)
 try:
@@ -79,8 +78,6 @@ MICRO_CANDLE_LIMIT = 60
 # Logging
 LOG_FILE = os.getenv("LOG_FILE", "trading_bot.log")
 
-# Binance Futures mark-price WebSocket (1-second updates)
-WS_URL = "wss://fstream.binance.com/ws/btcusdt@markPrice@1s"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -229,79 +226,58 @@ class TelegramNotifier:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 5 — LIVE PRICE FEED  (Binance Futures WebSocket, daemon thread)
+# SECTION 5 — LIVE PRICE FEED  (REST polling — WebSocket blocked on this VPS)
 # ══════════════════════════════════════════════════════════════════════════════
+
+# REST endpoint — no authentication needed, public market data
+_PRICE_URL = "https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT"
+
 
 class LivePriceFeed:
     """
-    Maintains the latest BTC/USDT mark price via Binance Futures WebSocket.
-    Runs in a daemon thread and reconnects automatically with exponential back-off.
+    Polls the Binance Futures REST mark-price endpoint every second.
+    Used in place of WebSocket when the VPS blocks outbound WebSocket connections.
+    Identical public interface: .price property, .start(), .stop().
     """
 
     def __init__(self) -> None:
-        self._price:    float = 0.0
-        self._lock              = threading.Lock()
-        self._running:  bool    = False
+        self._price:   float = 0.0
+        self._lock             = threading.Lock()
+        self._running: bool    = False
         self._thread: Optional[threading.Thread] = None
+        self._session          = requests.Session()
 
     @property
     def price(self) -> float:
         with self._lock:
             return self._price
 
-    # ── WebSocket callbacks ───────────────────────────────────────────────
-
-    def _on_message(self, _ws: Any, message: str) -> None:
-        try:
-            p = float(json.loads(message).get("p", 0))
-            if p > 0:
-                with self._lock:
-                    self._price = p
-        except Exception:
-            pass
-
-    def _on_error(self, _ws: Any, error: Any) -> None:
-        log.error(f"WebSocket error: {error}")
-
-    def _on_close(self, _ws: Any, code: Any, msg: Any) -> None:
-        log.warning(f"WebSocket closed ({code}) — scheduled reconnect.")
-
-    def _on_open(self, _ws: Any) -> None:
-        log.info("WebSocket live price feed connected.")
-
-    # ── Reconnect loop ────────────────────────────────────────────────────
-
-    def _run_loop(self) -> None:
-        backoff = 2
+    def _poll_loop(self) -> None:
         while self._running:
             try:
-                ws = websocket.WebSocketApp(
-                    WS_URL,
-                    on_message=self._on_message,
-                    on_error=self._on_error,
-                    on_close=self._on_close,
-                    on_open=self._on_open,
-                )
-                ws.run_forever(ping_interval=20, ping_timeout=10)
+                r = self._session.get(_PRICE_URL, timeout=5)
+                p = float(r.json().get("price", 0))
+                if p > 0:
+                    with self._lock:
+                        self._price = p
             except Exception as exc:
-                log.error(f"WebSocket thread exception: {exc}")
-            if self._running:
-                log.info(f"WebSocket reconnecting in {backoff}s…")
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 60)
+                log.error(f"Price poll error: {exc}")
+            time.sleep(1)
 
     def start(self) -> None:
         self._running = True
         self._thread  = threading.Thread(
-            target=self._run_loop, daemon=True, name="WSPriceFeed"
+            target=self._poll_loop, daemon=True, name="RestPriceFeed"
         )
         self._thread.start()
-        # Block up to 6 s waiting for the first price tick
+        # Wait up to 6 s for the first price
         deadline = time.monotonic() + 6
         while time.monotonic() < deadline and self.price == 0:
             time.sleep(0.1)
         if self.price == 0:
-            log.warning("WebSocket: no price received within 6 s of start.")
+            log.warning("REST price feed: no price received within 6 s of start.")
+        else:
+            log.info(f"REST price feed started. Initial price: {self.price:.2f} USDT")
 
     def stop(self) -> None:
         self._running = False

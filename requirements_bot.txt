@@ -10,10 +10,7 @@ ccxt>=4.2.90
 # EMA and RSI are computed with pure pandas (ewm) — no pandas-ta needed.
 pandas>=2.1.0,<3.0.0
 
-# WebSocket live price feed
-websocket-client>=1.7.0
-
-# HTTP client (Telegram + Claude API)
+# HTTP client (Telegram + Claude API + REST price feed)
 requests>=2.31.0
 
 # Environment variable loading from .env
