@@ -265,19 +265,27 @@ class LivePriceFeed:
             time.sleep(1)
 
     def start(self) -> None:
+        # Fetch the very first price synchronously so it is available immediately
+        for attempt in range(3):
+            try:
+                r = self._session.get(_PRICE_URL, timeout=10)
+                p = float(r.json().get("price", 0))
+                if p > 0:
+                    self._price = p
+                    log.info(f"REST price feed started. Initial price: {p:.2f} USDT")
+                    break
+            except Exception as exc:
+                log.warning(f"Initial price fetch attempt {attempt+1}/3 failed: {exc}")
+                time.sleep(2)
+        else:
+            log.error("Could not fetch initial price after 3 attempts.")
+
+        # Start background thread for continuous 1-second updates
         self._running = True
         self._thread  = threading.Thread(
             target=self._poll_loop, daemon=True, name="RestPriceFeed"
         )
         self._thread.start()
-        # Wait up to 6 s for the first price
-        deadline = time.monotonic() + 6
-        while time.monotonic() < deadline and self.price == 0:
-            time.sleep(0.1)
-        if self.price == 0:
-            log.warning("REST price feed: no price received within 6 s of start.")
-        else:
-            log.info(f"REST price feed started. Initial price: {self.price:.2f} USDT")
 
     def stop(self) -> None:
         self._running = False
