@@ -7,13 +7,8 @@
 ccxt>=4.2.90
 
 # Market data & indicator calculation
+# EMA and RSI are computed with pure pandas (ewm) — no pandas-ta needed.
 pandas>=2.1.0,<3.0.0
-# pandas-ta: PyPI release (0.3.14b0) has a known AttributeError with pandas 2.x.
-# For reproducible builds, pin a specific commit that is known to work:
-#   pip install git+https://github.com/twopirllc/pandas-ta.git@4af9a68
-# Replace the commit hash with whichever you have validated in your environment.
-# Using @main is NOT recommended for production — it will drift over time.
-pandas-ta>=0.3.14b0
 
 # WebSocket live price feed
 websocket-client>=1.7.0

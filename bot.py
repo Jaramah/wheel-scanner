@@ -22,7 +22,6 @@ from enum import Enum
 import requests
 import ccxt
 import pandas as pd
-import pandas_ta as ta
 import websocket  # websocket-client
 
 # Load .env file if present (requires python-dotenv)
@@ -471,16 +470,36 @@ class ExchangeManager:
 
 class IndicatorEngine:
     """
-    Fetches OHLCV data and computes all indicators locally.
+    Fetches OHLCV data and computes all indicators locally using pure pandas.
+    No pandas-ta dependency — EMA and RSI are calculated with pandas ewm().
     Claude receives only the finished numbers — no raw candle data is sent.
     """
 
     def __init__(self, exchange: ExchangeManager) -> None:
         self.exchange = exchange
 
+    # ── Pure-pandas indicator helpers ─────────────────────────────────────
+
+    @staticmethod
+    def _ema(series: pd.Series, length: int) -> pd.Series:
+        """Exponential Moving Average using pandas ewm (span = period)."""
+        return series.ewm(span=length, adjust=False).mean()
+
+    @staticmethod
+    def _rsi(series: pd.Series, length: int) -> pd.Series:
+        """
+        Relative Strength Index using Wilder smoothing (ewm alpha = 1/length).
+        Equivalent to the standard RSI calculation in TradingView and pandas-ta.
+        """
+        delta = series.diff()
+        gain  = delta.clip(lower=0).ewm(alpha=1 / length, adjust=False).mean()
+        loss  = (-delta.clip(upper=0)).ewm(alpha=1 / length, adjust=False).mean()
+        rs    = gain / loss.replace(0, float("nan"))
+        return 100.0 - (100.0 / (1.0 + rs))
+
     @staticmethod
     def _valid(value: float, name: str) -> bool:
-        """Return False and log if value is NaN, Inf, or non-positive where unexpected."""
+        """Return False and log if value is NaN or Inf."""
         if math.isnan(value) or math.isinf(value):
             log.error(f"Indicator '{name}' is NaN/Inf — bad exchange data or warmup issue.")
             return False
@@ -501,35 +520,16 @@ class IndicatorEngine:
             return None
 
         # ── 1H: 200 EMA ───────────────────────────────────────────────────
-        ema_200_series = ta.ema(df_1h["close"], length=EMA_MACRO_PERIOD)
-        if ema_200_series is None or ema_200_series.empty:
-            log.error("EMA-200 computation returned empty.")
-            return None
-        ema_200 = float(ema_200_series.iloc[-1])
+        ema_200 = float(self._ema(df_1h["close"], EMA_MACRO_PERIOD).iloc[-1])
         if not self._valid(ema_200, "EMA-200"):
             return None
 
         # ── 5M: 9 EMA, 21 EMA, RSI(14) ────────────────────────────────────
-        ema_9_series  = ta.ema(df_5m["close"], length=EMA_SHORT_PERIOD)
-        ema_21_series = ta.ema(df_5m["close"], length=EMA_LONG_PERIOD)
-        rsi_series    = ta.rsi(df_5m["close"], length=RSI_PERIOD)
+        ema_9  = float(self._ema(df_5m["close"], EMA_SHORT_PERIOD).iloc[-1])
+        ema_21 = float(self._ema(df_5m["close"], EMA_LONG_PERIOD).iloc[-1])
+        rsi    = float(self._rsi(df_5m["close"], RSI_PERIOD).iloc[-1])
 
-        if any(
-            s is None or (hasattr(s, "empty") and s.empty)
-            for s in [ema_9_series, ema_21_series, rsi_series]
-        ):
-            log.error("5m indicator computation returned empty series.")
-            return None
-
-        ema_9  = float(ema_9_series.iloc[-1])
-        ema_21 = float(ema_21_series.iloc[-1])
-        rsi    = float(rsi_series.iloc[-1])
-
-        # Reject any NaN/Inf that slipped through (e.g. insufficient warmup data)
-        named_vals = [
-            (ema_9, "EMA-9"), (ema_21, "EMA-21"), (rsi, "RSI-14"),
-        ]
-        for val, name in named_vals:
+        for val, name in [(ema_9, "EMA-9"), (ema_21, "EMA-21"), (rsi, "RSI-14")]:
             if not self._valid(val, name):
                 return None
 
@@ -537,10 +537,9 @@ class IndicatorEngine:
         candle_high  = float(df_5m["high"].iloc[-1])
         candle_low   = float(df_5m["low"].iloc[-1])
 
-        # Guard against malformed candle data from the exchange
         for val, name in [
             (candle_close, "candle_close"), (candle_high, "candle_high"),
-            (candle_low, "candle_low"),
+            (candle_low,   "candle_low"),
         ]:
             if not self._valid(val, name) or val <= 0:
                 log.error(f"Candle field '{name}={val}' is invalid.")
