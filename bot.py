@@ -8,6 +8,7 @@ Stack    : CCXT  |  pandas-ta  |  Claude 3.5 Sonnet via OpenClaw  |  Binance Fut
 import os
 import sys
 import json
+import math
 import time
 import logging
 import threading
@@ -322,6 +323,25 @@ class ExchangeManager:
         except Exception as exc:
             log.warning(f"set_leverage: {exc}  (may already be set correctly)")
 
+    # ── Credential validation ─────────────────────────────────────────────
+
+    def validate_credentials(self) -> bool:
+        """
+        Lightweight authenticated call to confirm API keys are accepted.
+        Returns False only on explicit AuthenticationError; network issues
+        return True to avoid blocking startup on transient failures.
+        """
+        try:
+            self.exchange.fetch_balance()
+            log.info("Exchange credential validation: OK")
+            return True
+        except ccxt.AuthenticationError as exc:
+            log.critical(f"Exchange authentication FAILED: {exc}")
+            return False
+        except Exception as exc:
+            log.warning(f"Exchange credential check inconclusive (network?): {exc}")
+            return True
+
     # ── Account ───────────────────────────────────────────────────────────
 
     def get_total_equity(self) -> float:
@@ -378,6 +398,24 @@ class ExchangeManager:
         order = self.place_market_order(close_side, position.size, reduce_only=True)
         return order is not None
 
+    def fetch_open_position(self) -> Optional[Dict]:
+        """
+        Returns the raw CCXT position dict for SYMBOL if one is currently open,
+        or None.  A position is considered open when |contracts| > 0.
+        Used on startup to detect positions from a previous session.
+        """
+        try:
+            positions = self.exchange.fetch_positions([SYMBOL])
+            for pos in positions:
+                # contracts field varies by CCXT version; fall back to positionAmt
+                raw_amt = pos.get("contracts") or pos.get("info", {}).get("positionAmt", 0)
+                if abs(float(raw_amt)) > 0:
+                    return pos
+            return None
+        except Exception as exc:
+            log.error(f"fetch_open_position: {exc}")
+            return None
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 7 — INDICATOR ENGINE  (all calculations local via pandas-ta)
@@ -391,6 +429,14 @@ class IndicatorEngine:
 
     def __init__(self, exchange: ExchangeManager) -> None:
         self.exchange = exchange
+
+    @staticmethod
+    def _valid(value: float, name: str) -> bool:
+        """Return False and log if value is NaN, Inf, or non-positive where unexpected."""
+        if math.isnan(value) or math.isinf(value):
+            log.error(f"Indicator '{name}' is NaN/Inf — bad exchange data or warmup issue.")
+            return False
+        return True
 
     def compute(self, current_price: float) -> Optional[IndicatorSnapshot]:
         df_1h = self.exchange.fetch_ohlcv(TIMEFRAME_MACRO, MACRO_CANDLE_LIMIT)
@@ -412,6 +458,8 @@ class IndicatorEngine:
             log.error("EMA-200 computation returned empty.")
             return None
         ema_200 = float(ema_200_series.iloc[-1])
+        if not self._valid(ema_200, "EMA-200"):
+            return None
 
         # ── 5M: 9 EMA, 21 EMA, RSI(14) ────────────────────────────────────
         ema_9_series  = ta.ema(df_5m["close"], length=EMA_SHORT_PERIOD)
@@ -429,9 +477,26 @@ class IndicatorEngine:
         ema_21 = float(ema_21_series.iloc[-1])
         rsi    = float(rsi_series.iloc[-1])
 
+        # Reject any NaN/Inf that slipped through (e.g. insufficient warmup data)
+        named_vals = [
+            (ema_9, "EMA-9"), (ema_21, "EMA-21"), (rsi, "RSI-14"),
+        ]
+        for val, name in named_vals:
+            if not self._valid(val, name):
+                return None
+
         candle_close = float(df_5m["close"].iloc[-1])
         candle_high  = float(df_5m["high"].iloc[-1])
         candle_low   = float(df_5m["low"].iloc[-1])
+
+        # Guard against malformed candle data from the exchange
+        for val, name in [
+            (candle_close, "candle_close"), (candle_high, "candle_high"),
+            (candle_low, "candle_low"),
+        ]:
+            if not self._valid(val, name) or val <= 0:
+                log.error(f"Candle field '{name}={val}' is invalid.")
+                return None
 
         macro_bias = "BULLISH" if candle_close > ema_200 else "BEARISH"
 
@@ -884,6 +949,95 @@ class TradingBot:
             self.exchange, self.risk_mgr, self.telegram, self.price_feed
         )
 
+    # ── Startup position reconciliation ──────────────────────────────────
+
+    def _reconcile_open_position(self, live_price: float) -> None:
+        """
+        Detects positions left open from a previous session and hands them to
+        the TrailingStopMonitor so they are managed immediately.
+
+        Without this, a restart would ignore an existing position entirely,
+        leaving it unmonitored and potentially breaching risk limits silently.
+
+        Stop levels are estimated conservatively because the original Claude
+        signal is no longer available — the operator should verify them manually.
+        """
+        log.info("Startup: scanning for pre-existing open positions…")
+        raw = self.exchange.fetch_open_position()
+        if raw is None:
+            log.info("Startup: no open position detected — clean state.")
+            return
+
+        side = str(raw.get("side", "")).lower()  # ccxt normalises to 'long'/'short'
+        if side not in ("long", "short"):
+            # Some exchange responses use 'info.positionSide' instead
+            ps = str(raw.get("info", {}).get("positionSide", "")).lower()
+            side = ps if ps in ("long", "short") else ""
+
+        if not side:
+            log.warning("Startup: could not determine position side — skipping reconciliation.")
+            return
+
+        direction = TradeDirection.LONG if side == "long" else TradeDirection.SHORT
+
+        # Entry price: prefer CCXT normalised field, fall back to raw info dict
+        entry_price = float(
+            raw.get("entryPrice")
+            or raw.get("info", {}).get("entryPrice", 0)
+            or live_price
+        )
+        # Position size in BTC
+        size_btc = abs(float(
+            raw.get("contracts")
+            or raw.get("info", {}).get("positionAmt", 0)
+        ))
+
+        if entry_price <= 0 or size_btc <= 0:
+            log.warning(
+                f"Startup: unparseable position data "
+                f"(entry={entry_price}, size={size_btc}) — skipping reconciliation."
+            )
+            return
+
+        # Estimate conservative stops anchored to the *current* live price,
+        # not the stale entry price, so the bot can react immediately.
+        if direction == TradeDirection.LONG:
+            hard_stop   = round(live_price * 0.98, 2)   # 2 % below live price
+            trailing_ts = round(live_price * (1.0 - TRAILING_STOP_PCT), 2)
+            take_profit = round(live_price * 1.04, 2)   # 4 % above live price
+        else:
+            hard_stop   = round(live_price * 1.02, 2)
+            trailing_ts = round(live_price * (1.0 + TRAILING_STOP_PCT), 2)
+            take_profit = round(live_price * 0.96, 2)
+
+        position = OpenPosition(
+            direction     = direction,
+            entry_price   = entry_price,
+            stop_loss     = hard_stop,
+            take_profit   = take_profit,
+            size          = size_btc,
+            order_id      = "RECONCILED",
+            entry_time    = datetime.datetime.now(datetime.timezone.utc),
+            peak_price    = live_price,
+            trailing_stop = trailing_ts,
+        )
+
+        log.warning(
+            f"Startup: reconciled {direction.value} position | "
+            f"entry={entry_price:.2f}  size={size_btc:.6f} BTC  "
+            f"est_ts={trailing_ts:.2f}  est_hard_stop={hard_stop:.2f}"
+        )
+        self.telegram.send(
+            "⚠️ <b>Position Reconciled on Restart</b>\n"
+            f"Found open <b>{direction.value}</b> from a previous session.\n"
+            f"Entry price : {entry_price:.2f} USDT\n"
+            f"Size        : {size_btc:.6f} BTC\n"
+            f"Est. trailing stop : {trailing_ts:.2f}\n"
+            f"Est. hard stop     : {hard_stop:.2f}\n"
+            "<i>⚠️ Stop levels are estimates. Review manually if possible.</i>"
+        )
+        self.ts_monitor.start(position)
+
     # ── Timing helpers ────────────────────────────────────────────────────
 
     @staticmethod
@@ -961,8 +1115,19 @@ class TradingBot:
     # ── Main loop ─────────────────────────────────────────────────────────
 
     def run(self) -> None:
+        # ── Credential validation (fast-fail before anything else) ────────
+        if not self.exchange.validate_credentials():
+            log.critical("Invalid API credentials — exiting.")
+            sys.exit(1)
+
         self.price_feed.start()
         log.info(f"Price feed live.  Initial price: {self.price_feed.price:.2f} USDT")
+
+        # ── Reconcile any position left open from a prior session ─────────
+        if self.price_feed.price > 0:
+            self._reconcile_open_position(self.price_feed.price)
+        else:
+            log.warning("Startup: skipping position reconciliation — no live price yet.")
 
         self.telegram.send(
             "🤖 <b>Trading Bot Online</b>\n"

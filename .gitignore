@@ -8,3 +8,5 @@ env/
 *.csv
 *.xlsx
 *.db
+trading_bot.log
+backups/
