@@ -149,21 +149,20 @@ python bot.py
 ```bash
 # Make the script executable
 chmod +x /home/trader/wheel-scanner/send_weekly_log.sh
+```
 
-# Add environment variables used by the cron job
-# (cron does not inherit your shell environment)
-echo 'TELEGRAM_BOT_TOKEN=123456789:YOUR_TOKEN_HERE' >> /etc/environment
-echo 'TELEGRAM_CHAT_ID=-1001234567890'              >> /etc/environment
+The script reads credentials directly from `/home/trader/wheel-scanner/.env`, so **no `/etc/environment` changes are needed**. The cron entry is therefore minimal:
 
+```bash
 # Open the crontab editor
 crontab -e
 ```
 
-Add this line at the bottom of the crontab file:
+Add this line at the bottom:
 
 ```cron
 # Weekly log backup — every Sunday at 00:00 UTC
-0 0 * * 0 TELEGRAM_BOT_TOKEN=<TOKEN> TELEGRAM_CHAT_ID=<CHAT_ID> /home/trader/wheel-scanner/send_weekly_log.sh >> /home/trader/wheel-scanner/backup_cron.log 2>&1
+0 0 * * 0 /home/trader/wheel-scanner/send_weekly_log.sh >> /home/trader/wheel-scanner/backup_cron.log 2>&1
 ```
 
 Verify the cron job is registered:
@@ -173,8 +172,7 @@ crontab -l
 
 Test the script manually before relying on cron:
 ```bash
-TELEGRAM_BOT_TOKEN=<TOKEN> TELEGRAM_CHAT_ID=<CHAT_ID> \
-    bash /home/trader/wheel-scanner/send_weekly_log.sh
+bash /home/trader/wheel-scanner/send_weekly_log.sh
 ```
 
 ---
@@ -190,7 +188,12 @@ grep -E "\[ERROR\]|\[CRITICAL\]|\[SKIP\]" trading_bot.log | tail -30
 
 # Check if bot process is running
 ps aux | grep bot.py
+
+# Check log rotation files (bot rotates at 10 MB, keeps 14 files ≈ 140 MB max)
+ls -lh /home/trader/wheel-scanner/trading_bot.log*
 ```
+
+> **Log rotation** is handled automatically by Python's `RotatingFileHandler` (10 MB per file, 14 backups). No separate `logrotate` configuration is needed. The weekly cron backup captures the active log file before rotation discards it.
 
 ---
 
@@ -199,7 +202,7 @@ ps aux | grep bot.py
 Work through this checklist **in order** before changing `SANDBOX_MODE=false`:
 
 - [ ] Bot ran on testnet for at least 2 weeks without crashes
-- [ ] Circuit breaker fires and halts entries correctly (test by artificially lowering `DAILY_LOSS_LIMIT_USD`)
+- [ ] Circuit breaker fires and halts entries correctly (test by temporarily setting `DAILY_LOSS_LIMIT_PCT=0.001` so a tiny loss triggers it)
 - [ ] Trailing stop exits positions correctly on testnet
 - [ ] Telegram notifications arrive reliably
 - [ ] Weekly backup cron ran successfully at least once
@@ -239,7 +242,7 @@ Type=simple
 User=trader
 WorkingDirectory=/home/trader/wheel-scanner
 EnvironmentFile=/home/trader/wheel-scanner/.env
-ExecStart=/home/trader/wheel-scanner/venv/bin/python bot.py
+ExecStart=/home/trader/wheel-scanner/venv/bin/python /home/trader/wheel-scanner/bot.py
 Restart=on-failure
 RestartSec=30
 StandardOutput=append:/home/trader/wheel-scanner/trading_bot.log
@@ -268,13 +271,14 @@ sudo systemctl status tradingbot
 | `BINANCE_API_KEY` | — | Binance API key (required) |
 | `BINANCE_API_SECRET` | — | Binance API secret (required) |
 | `SANDBOX_MODE` | `true` | `true` = testnet, `false` = live |
-| `LEVERAGE` | `5` | Futures leverage (1–125) |
+| `LEVERAGE` | `5` | Requested futures leverage |
+| `MAX_LEVERAGE` | `20` | Hard cap — bot clamps `LEVERAGE` down to this value |
 | `CLAUDE_API_URL` | `http://localhost:8000/v1/chat/completions` | OpenClaw proxy URL |
 | `CLAUDE_MODEL` | `claude-3-5-sonnet-20241022` | Model name forwarded to Anthropic |
 | `TELEGRAM_BOT_TOKEN` | — | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | — | Telegram chat / channel ID |
 | `RISK_PER_TRADE_PCT` | `0.01` | Fraction of equity risked per trade |
 | `TRAILING_STOP_PCT` | `0.005` | Trailing stop distance (0.5%) |
-| `DAILY_LOSS_LIMIT_USD` | `100.0` | Circuit breaker threshold in USD |
+| `DAILY_LOSS_LIMIT_PCT` | `0.03` | Circuit breaker threshold as fraction of startup equity (3%) |
 | `SLIPPAGE_LIMIT_PCT` | `0.001` | Max allowed slippage before skipping (0.1%) |
 | `LOG_FILE` | `trading_bot.log` | Path to the rolling log file |

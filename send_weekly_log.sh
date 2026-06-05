@@ -6,12 +6,26 @@
 # Cron schedule (every Sunday at 00:00 UTC):
 #   0 0 * * 0  /home/trader/wheel-scanner/send_weekly_log.sh >> /home/trader/wheel-scanner/backup_cron.log 2>&1
 #
-# Required environment variables (set in /etc/environment or crontab -e):
-#   TELEGRAM_BOT_TOKEN   — bot token from @BotFather
-#   TELEGRAM_CHAT_ID     — numeric chat / channel ID
+# Credentials are read from the project's .env file — no /etc/environment
+# changes or inline crontab variable exports are needed.
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
+
+# ── Load .env for credentials ─────────────────────────────────────────────────
+# Resolve the directory this script lives in (works even when called from cron)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/.env"
+
+if [[ -f "${ENV_FILE}" ]]; then
+    # Export only KEY=VALUE lines; skip comments and blanks
+    set -o allexport
+    # shellcheck disable=SC1090
+    source <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "${ENV_FILE}")
+    set +o allexport
+else
+    echo "[WARN] .env not found at ${ENV_FILE} — falling back to environment variables."
+fi
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"

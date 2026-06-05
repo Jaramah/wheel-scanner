@@ -11,6 +11,7 @@ import json
 import math
 import time
 import logging
+import logging.handlers
 import threading
 import datetime
 import traceback
@@ -44,7 +45,9 @@ SANDBOX_MODE        = os.getenv("SANDBOX_MODE", "true").lower() == "true"
 # Trading pair — USDT-margined BTC perpetual futures
 SYMBOL        = "BTC/USDT:USDT"
 BASE_CURRENCY = "USDT"
-LEVERAGE      = int(os.getenv("LEVERAGE", "5"))
+_RAW_LEVERAGE = int(os.getenv("LEVERAGE",     "5"))
+MAX_LEVERAGE  = int(os.getenv("MAX_LEVERAGE", "20"))   # hard safety cap; reject values above this
+LEVERAGE      = min(max(_RAW_LEVERAGE, 1), MAX_LEVERAGE)
 
 # Claude / OpenClaw local proxy
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "http://localhost:8000/v1/chat/completions")
@@ -58,7 +61,10 @@ TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 # Risk parameters
 RISK_PER_TRADE_PCT   = float(os.getenv("RISK_PER_TRADE_PCT",   "0.01"))   # 1 % of equity
 TRAILING_STOP_PCT    = float(os.getenv("TRAILING_STOP_PCT",    "0.005"))  # 0.5 % trailing
-DAILY_LOSS_LIMIT_USD = float(os.getenv("DAILY_LOSS_LIMIT_USD", "100.0"))  # $100 hard cap
+# Percentage-based daily loss limit — scales correctly with account size.
+# The bot converts this to a USD amount at startup using the live account equity.
+# A $100 fixed limit means 20 % drawdown on $500 but only 0.1 % on $100k; 3 % is consistent.
+DAILY_LOSS_LIMIT_PCT = float(os.getenv("DAILY_LOSS_LIMIT_PCT", "0.03"))   # 3 % of equity
 SLIPPAGE_LIMIT_PCT   = float(os.getenv("SLIPPAGE_LIMIT_PCT",   "0.001"))  # 0.10 % max slip
 
 # Strategy timeframes & indicator periods
@@ -103,7 +109,12 @@ def _setup_logging() -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     fmt = _BotFormatter()
 
-    fh = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
+    # Rotate at 10 MB, keep 14 files (~140 MB cap).  Prevents unbounded disk growth
+    # on a continuously-running bot without needing a separate logrotate config.
+    fh = logging.handlers.RotatingFileHandler(
+        LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=14,
+        mode="a", encoding="utf-8",
+    )
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
 
@@ -117,6 +128,13 @@ def _setup_logging() -> logging.Logger:
 
 
 log = _setup_logging()
+
+# Warn loudly if leverage was silently clamped — happens before any API call
+if LEVERAGE != _RAW_LEVERAGE:
+    log.warning(
+        f"LEVERAGE={_RAW_LEVERAGE}x exceeds MAX_LEVERAGE={MAX_LEVERAGE}x — "
+        f"clamped to {LEVERAGE}x. Set MAX_LEVERAGE env var if you intentionally want higher."
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -383,14 +401,44 @@ class ExchangeManager:
         params = {"reduceOnly": True} if reduce_only else {}
         try:
             order = self.exchange.create_market_order(SYMBOL, side, amount, params=params)
+
+            # Partial-fill guard — futures market orders rarely partially fill, but if they
+            # do the position size passed to the trailing-stop monitor must reflect reality.
+            filled = float(order.get("filled") or order.get("amount") or 0)
+            if filled == 0:
+                log.error(
+                    f"Zero-fill on {side.upper()} {amount:.6f} BTC "
+                    f"| ID={order.get('id')}  status={order.get('status')} — aborting."
+                )
+                return None
+            if filled < amount * 0.95:
+                log.warning(
+                    f"Partial fill: requested={amount:.6f} BTC  filled={filled:.6f} BTC "
+                    f"({filled / amount * 100:.1f}%) — using actual filled amount."
+                )
+            order["_actual_filled"] = filled   # normalised field used by callers
+
             log.info(
-                f"Order filled: {side.upper()} {amount:.6f} BTC | "
-                f"ID={order['id']} | avg={order.get('average')}"
+                f"Order OK: {side.upper()} {filled:.6f}/{amount:.6f} BTC"
+                f" | ID={order['id']} | avg={order.get('average')}"
             )
             return order
+
+        except ccxt.RateLimitExceeded as exc:
+            log.error(f"Rate limit exceeded: {exc} — reduce polling frequency.")
+        except ccxt.NetworkError as exc:
+            log.error(f"Network error placing order: {exc}")
+        except ccxt.ExchangeNotAvailable as exc:
+            log.error(f"Exchange unavailable (maintenance?): {exc}")
+        except ccxt.InvalidOrder as exc:
+            log.error(f"Invalid order parameters: {exc}")
+        except ccxt.InsufficientFunds as exc:
+            log.error(f"Insufficient funds: {exc}")
+        except ccxt.ExchangeError as exc:
+            log.error(f"Exchange error: {exc}")
         except Exception as exc:
-            log.error(f"create_market_order({side}, {amount}): {exc}")
-            return None
+            log.error(f"create_market_order({side}, {amount}) unexpected error: {exc}")
+        return None
 
     def close_position(self, position: "OpenPosition") -> bool:
         """Close an open position with a reduceOnly market order."""
@@ -603,6 +651,60 @@ class ClaudeSignalEngine:
             "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY', 'local')}",
         })
 
+    @staticmethod
+    def _validate_signal(signal: TradeSignal, snap: IndicatorSnapshot) -> bool:
+        """
+        Hard-rejects geometrically impossible or dangerous signal values before
+        any order is placed.  Claude is instructed to follow the rules, but a
+        misconfigured proxy, network corruption, or unexpected output must not
+        reach the order-management layer.
+        """
+        if signal.action == "HOLD":
+            return True
+
+        price = snap.current_price
+        sl    = signal.stop_loss
+        tp    = signal.take_profit
+
+        # All numeric fields must be positive for a directional signal
+        if sl <= 0 or tp <= 0:
+            log.error(f"Signal validation FAIL: sl={sl} or tp={tp} ≤ 0.")
+            return False
+
+        # Direction-specific price ordering
+        if signal.action == "BUY":
+            if sl >= price:
+                log.error(f"Signal validation FAIL: BUY sl={sl:.2f} >= price={price:.2f}.")
+                return False
+            if tp <= price:
+                log.error(f"Signal validation FAIL: BUY tp={tp:.2f} <= price={price:.2f}.")
+                return False
+        elif signal.action == "SELL":
+            if sl <= price:
+                log.error(f"Signal validation FAIL: SELL sl={sl:.2f} <= price={price:.2f}.")
+                return False
+            if tp >= price:
+                log.error(f"Signal validation FAIL: SELL tp={tp:.2f} >= price={price:.2f}.")
+                return False
+
+        # Stop distance: must be between 0.1 % and 3 % of current price
+        stop_dist_pct = abs(price - sl) / price
+        if stop_dist_pct < 0.001:
+            log.error(f"Signal validation FAIL: stop distance {stop_dist_pct*100:.3f}% < 0.1%.")
+            return False
+        if stop_dist_pct > 0.03:
+            log.error(f"Signal validation FAIL: stop distance {stop_dist_pct*100:.2f}% > 3%.")
+            return False
+
+        # Minimum 1.5 : 1 risk-reward ratio
+        risk   = abs(price - sl)
+        reward = abs(tp - price)
+        if risk > 0 and (reward / risk) < 1.5:
+            log.error(f"Signal validation FAIL: R:R = {reward/risk:.2f} < 1.5 minimum.")
+            return False
+
+        return True
+
     def get_signal(self, snap: IndicatorSnapshot) -> Optional[TradeSignal]:
         user_content = json.dumps({
             "timestamp":       snap.timestamp,
@@ -658,10 +760,17 @@ class ClaudeSignalEngine:
                 log.error(f"Claude returned unknown action '{action}' — defaulting HOLD.")
                 return TradeSignal("HOLD", 0.0, 0.0)
 
+            signal = TradeSignal(action, stop_loss, take_profit)
+
+            # Geometric sanity check — reject hallucinated or malformed values
+            if not self._validate_signal(signal, snap):
+                log.warning("Claude signal failed validation — treated as HOLD.")
+                return TradeSignal("HOLD", 0.0, 0.0)
+
             log.info(
                 f"Claude signal: action={action}  sl={stop_loss:.2f}  tp={take_profit:.2f}"
             )
-            return TradeSignal(action, stop_loss, take_profit)
+            return signal
 
         except json.JSONDecodeError as exc:
             log.error(f"Claude JSON parse error: {exc} | raw='{resp.text[:300]}'")
@@ -684,8 +793,9 @@ class RiskManager:
       • $100 / 24 h circuit breaker (resets at midnight UTC)
     """
 
-    def __init__(self, telegram: TelegramNotifier) -> None:
+    def __init__(self, telegram: TelegramNotifier, daily_limit_usd: float) -> None:
         self._telegram              = telegram
+        self._daily_limit_usd       = daily_limit_usd   # computed from equity % at startup
         self._lock                  = threading.Lock()
         self._daily_loss:   float   = 0.0
         self._loss_date             = datetime.datetime.now(datetime.timezone.utc).date()
@@ -766,15 +876,16 @@ class RiskManager:
                 f"Trade PnL: -${loss:.2f} | Daily loss total: ${daily_total:.2f}"
                 f" / ${DAILY_LOSS_LIMIT_USD:.2f}"
             )
-            if daily_total >= DAILY_LOSS_LIMIT_USD and not self.circuit_breaker_active:
+            if daily_total >= self._daily_limit_usd and not self.circuit_breaker_active:
                 self.circuit_breaker_active = True
                 log.critical(
                     f"CIRCUIT BREAKER ACTIVATED — daily loss ${daily_total:.2f}"
-                    f" >= limit ${DAILY_LOSS_LIMIT_USD:.2f}"
+                    f" >= limit ${self._daily_limit_usd:.2f}"
                 )
                 self._telegram.send(
                     "🚨 <b>CIRCUIT BREAKER TRIPPED</b> 🚨\n"
-                    f"Daily loss limit of <b>${DAILY_LOSS_LIMIT_USD:.2f}</b> reached.\n"
+                    f"Daily loss limit of <b>${self._daily_limit_usd:.2f}</b> "
+                    f"({DAILY_LOSS_LIMIT_PCT*100:.1f}% of startup equity) reached.\n"
                     f"Cumulative loss: <b>${daily_total:.2f}</b>\n"
                     "All new entries FROZEN until midnight UTC."
                 )
@@ -944,7 +1055,24 @@ class TradingBot:
         self.exchange   = ExchangeManager()
         self.indicators = IndicatorEngine(self.exchange)
         self.claude     = ClaudeSignalEngine()
-        self.risk_mgr   = RiskManager(self.telegram)
+
+        # Compute the daily loss limit as a percentage of current equity so the
+        # circuit breaker scales correctly regardless of account size.
+        _equity = self.exchange.get_total_equity()
+        if _equity > 0:
+            _daily_limit = _equity * DAILY_LOSS_LIMIT_PCT
+            log.info(
+                f"Daily loss limit: {DAILY_LOSS_LIMIT_PCT*100:.1f}% of "
+                f"${_equity:,.2f} equity = <b>${_daily_limit:.2f}</b>"
+            )
+        else:
+            _daily_limit = 100.0
+            log.warning(
+                f"Could not fetch equity for dynamic daily loss limit "
+                f"— using conservative ${_daily_limit:.2f} fallback."
+            )
+
+        self.risk_mgr   = RiskManager(self.telegram, daily_limit_usd=_daily_limit)
         self.ts_monitor = TrailingStopMonitor(
             self.exchange, self.risk_mgr, self.telegram, self.price_feed
         )
@@ -1073,7 +1201,11 @@ class TradingBot:
             log.error("Order placement failed — aborting entry.")
             return False
 
-        fill_price = float(order.get("average") or entry_price)
+        fill_price   = float(order.get("average") or entry_price)
+        actual_size  = float(order.get("_actual_filled") or order.get("filled") or size_btc)
+        if actual_size != size_btc:
+            log.info(f"Position size adjusted for partial fill: {size_btc:.6f} → {actual_size:.6f} BTC")
+            size_btc = actual_size
 
         # Compute initial trailing stop from actual fill price
         if direction == TradeDirection.LONG:
