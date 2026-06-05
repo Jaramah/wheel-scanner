@@ -40,6 +40,10 @@ EXCHANGE_API_KEY    = os.getenv("BINANCE_API_KEY", "")
 EXCHANGE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 SANDBOX_MODE        = os.getenv("SANDBOX_MODE", "true").lower() == "true"
 
+# Dry-run (paper trading) mode — no real orders are placed; market data is still live.
+DRY_RUN         = os.getenv("DRY_RUN", "false").lower() == "true"
+DRY_RUN_BALANCE = float(os.getenv("DRY_RUN_BALANCE", "1000.0"))  # simulated USDT equity
+
 # Trading pair — USDT-margined BTC perpetual futures
 SYMBOL        = "BTC/USDT:USDT"
 BASE_CURRENCY = "USDT"
@@ -309,13 +313,16 @@ class ExchangeManager:
             "enableRateLimit": True,
         })
 
-        if SANDBOX_MODE:
+        if DRY_RUN:
+            log.info(f"Exchange: DRY-RUN mode — no real orders. Simulated balance: ${DRY_RUN_BALANCE:.2f} USDT")
+        elif SANDBOX_MODE:
             self.exchange.set_sandbox_mode(True)
             log.info("Exchange: SANDBOX / TESTNET mode active.")
         else:
             log.warning("Exchange: LIVE mode — real capital is at risk!")
 
-        self._set_leverage()
+        if not DRY_RUN:
+            self._set_leverage()
 
     def _set_leverage(self) -> None:
         try:
@@ -332,6 +339,9 @@ class ExchangeManager:
         Returns False only on explicit AuthenticationError; network issues
         return True to avoid blocking startup on transient failures.
         """
+        if DRY_RUN:
+            log.info("Exchange credential validation: skipped (DRY-RUN mode)")
+            return True
         try:
             self.exchange.fetch_balance()
             log.info("Exchange credential validation: OK")
@@ -347,6 +357,8 @@ class ExchangeManager:
 
     def get_total_equity(self) -> float:
         """Total USDT equity (free + used margin)."""
+        if DRY_RUN:
+            return DRY_RUN_BALANCE
         try:
             bal = self.exchange.fetch_balance()
             return float(bal.get("USDT", {}).get("total", 0.0))
@@ -381,6 +393,13 @@ class ExchangeManager:
         reduce_only: bool = False,
     ) -> Optional[Dict]:
         """Execute a market order. side='buy'|'sell'. Returns raw CCXT order or None."""
+        if DRY_RUN:
+            mock_id = f"dryrun-{int(time.time())}"
+            log.info(f"DRY-RUN order: {side.upper()} {amount:.6f} BTC (reduce_only={reduce_only}) | ID={mock_id}")
+            return {"id": mock_id, "symbol": SYMBOL, "side": side,
+                    "amount": amount, "filled": amount, "average": 0.0,
+                    "status": "closed", "_actual_filled": amount}
+
         params = {"reduceOnly": True} if reduce_only else {}
         try:
             order = self.exchange.create_market_order(SYMBOL, side, amount, params=params)
@@ -435,6 +454,8 @@ class ExchangeManager:
         or None.  A position is considered open when |contracts| > 0.
         Used on startup to detect positions from a previous session.
         """
+        if DRY_RUN:
+            return None
         try:
             positions = self.exchange.fetch_positions([SYMBOL])
             for pos in positions:
@@ -1027,7 +1048,8 @@ class TradingBot:
     def __init__(self) -> None:
         log.info("═" * 68)
         log.info("AI-Driven Crypto Trading Bot — Initializing")
-        log.info(f"Symbol: {SYMBOL}  |  Sandbox: {SANDBOX_MODE}  |  Leverage: {LEVERAGE}x")
+        mode_str = "DRY-RUN" if DRY_RUN else ("SANDBOX" if SANDBOX_MODE else "LIVE")
+        log.info(f"Symbol: {SYMBOL}  |  Mode: {mode_str}  |  Leverage: {LEVERAGE}x")
         log.info(f"Risk: {RISK_PER_TRADE_PCT*100:.1f}% / trade"
                  f"  |  Daily limit: {DAILY_LOSS_LIMIT_PCT*100:.1f}% of equity"
                  f"  |  Trailing stop: {TRAILING_STOP_PCT*100:.2f}%")
@@ -1244,10 +1266,16 @@ class TradingBot:
         else:
             log.warning("Startup: skipping position reconciliation — no live price yet.")
 
+        if DRY_RUN:
+            mode_label = "⚪ DRY-RUN (paper trading)"
+        elif SANDBOX_MODE:
+            mode_label = "🟡 SANDBOX"
+        else:
+            mode_label = "🔴 LIVE"
         self.telegram.send(
             "🤖 <b>Trading Bot Online</b>\n"
             f"Symbol : {SYMBOL}\n"
-            f"Mode   : {'🟡 SANDBOX' if SANDBOX_MODE else '🔴 LIVE'}\n"
+            f"Mode   : {mode_label}\n"
             f"Leverage: {LEVERAGE}x\n"
             f"Daily loss cap: {DAILY_LOSS_LIMIT_PCT*100:.1f}% of equity"
         )
