@@ -873,7 +873,7 @@ class RiskManager:
             daily_total = self._daily_loss
             log.info(
                 f"Trade PnL: -${loss:.2f} | Daily loss total: ${daily_total:.2f}"
-                f" / ${DAILY_LOSS_LIMIT_USD:.2f}"
+                f" / ${self._daily_limit_usd:.2f}"
             )
             if daily_total >= self._daily_limit_usd and not self.circuit_breaker_active:
                 self.circuit_breaker_active = True
@@ -1045,7 +1045,7 @@ class TradingBot:
         log.info("AI-Driven Crypto Trading Bot — Initializing")
         log.info(f"Symbol: {SYMBOL}  |  Sandbox: {SANDBOX_MODE}  |  Leverage: {LEVERAGE}x")
         log.info(f"Risk: {RISK_PER_TRADE_PCT*100:.1f}% / trade"
-                 f"  |  Daily limit: ${DAILY_LOSS_LIMIT_USD:.2f}"
+                 f"  |  Daily limit: {DAILY_LOSS_LIMIT_PCT*100:.1f}% of equity"
                  f"  |  Trailing stop: {TRAILING_STOP_PCT*100:.2f}%")
         log.info("═" * 68)
 
@@ -1265,7 +1265,7 @@ class TradingBot:
             f"Symbol : {SYMBOL}\n"
             f"Mode   : {'🟡 SANDBOX' if SANDBOX_MODE else '🔴 LIVE'}\n"
             f"Leverage: {LEVERAGE}x\n"
-            f"Daily loss cap: ${DAILY_LOSS_LIMIT_USD:.2f}"
+            f"Daily loss cap: {DAILY_LOSS_LIMIT_PCT*100:.1f}% of equity"
         )
 
         while True:
