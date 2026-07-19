@@ -8,3 +8,9 @@ env/
 *.csv
 *.xlsx
 *.db
+*.db-wal
+*.db-shm
+
+# agent_platform secrets / local state
+agent_platform/.secret.key
+agent_platform/platform.db*

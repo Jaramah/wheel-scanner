@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ensemble — Multi-Agent Platform</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◇</span>
+      <div>
+        <h1>Ensemble</h1>
+        <p class="tagline">Multiple agents. One project. They double-check each other.</p>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-view="agents">Agents</button>
+      <button class="tab" data-view="projects">Projects</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============ AGENTS ============ -->
+    <section id="view-agents" class="view active">
+      <div class="grid">
+        <div class="card">
+          <h2>Connect an agent</h2>
+          <p class="muted">
+            Paste an agent's <strong>subscription key</strong> or API key. Keys are
+            encrypted at rest and never returned to the browser.
+          </p>
+          <form id="agent-form" class="stack">
+            <label>Display name
+              <input name="name" placeholder="e.g. Claude-Builder" required />
+            </label>
+            <label>Provider
+              <select name="provider" id="provider-select"></select>
+            </label>
+            <p class="hint" id="provider-help"></p>
+            <label>Model
+              <input name="model" id="model-input" placeholder="model id" />
+            </label>
+            <label id="baseurl-row" class="hidden">Base URL
+              <input name="base_url" placeholder="http://localhost:11434/v1" />
+            </label>
+            <label id="cred-row">Subscription / API key
+              <input name="credential" type="password" placeholder="paste key (optional for mock/local)" />
+            </label>
+            <button type="submit" class="primary">Add agent</button>
+            <p class="form-msg" id="agent-msg"></p>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Your agents <span id="agent-count" class="pill">0</span></h2>
+          <p class="muted">These agents can be assembled onto any task.</p>
+          <ul id="agent-list" class="list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROJECTS ============ -->
+    <section id="view-projects" class="view">
+      <div class="grid">
+        <div class="card">
+          <h2>New project</h2>
+          <form id="project-form" class="stack">
+            <label>Project name
+              <input name="name" placeholder="e.g. Billing service refactor" required />
+            </label>
+            <label>Description
+              <textarea name="description" rows="2" placeholder="optional"></textarea>
+            </label>
+            <button type="submit" class="primary">Create project</button>
+          </form>
+          <ul id="project-list" class="list projects"></ul>
+        </div>
+
+        <div class="card wide">
+          <div id="project-detail" class="muted">Select or create a project to begin.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
