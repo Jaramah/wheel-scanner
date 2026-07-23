@@ -452,7 +452,7 @@ def main(outdir):
         "volume=1.8[vo];"
         "[2:a]volume=0.10[mu];"
         "[vo][mu]amix=inputs=2:duration=first:normalize=0,"
-        "alimiter=limit=0.89[a]",
+        "alimiter=limit=0.89:level=false[a]",
         "-map", "[v]", "-map", "[a]",
         "-c:v", "libx264", "-preset", "medium", "-crf", "20",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
