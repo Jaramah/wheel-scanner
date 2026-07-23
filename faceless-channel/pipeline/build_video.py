@@ -208,30 +208,21 @@ def letterspaced(draw, xy, text, font, fill, tracking=8, anchor_center=None):
 
 def parse_marks(text):
     """Split '*hot* words' into [(word, highlighted)] keeping punctuation."""
-    out = []
-    for tok in text.split():
-        if tok.startswith("*") and tok.count("*") == 1:
-            # multi-word highlight opens here
-            out.append((tok.lstrip("*"), True, "open"))
-        elif tok.endswith("*") and tok.count("*") == 1:
-            out.append((tok.rstrip("*"), True, "close"))
-        elif tok.startswith("*") and tok.endswith("*"):
-            out.append((tok.strip("*"), True, None))
-        else:
-            out.append((tok, False, None))
-    # propagate open..close highlighting
     words, hot = [], False
-    for wtext, flagged, kind in out:
-        if flagged and kind == "open":
+    for tok in text.split():
+        opens = tok.startswith("*")
+        closes = "*" in (tok[1:] if opens else tok)
+        clean = tok.replace("*", "")
+        if opens and closes:
+            words.append((clean, True))
+        elif opens:
             hot = True
-            words.append((wtext, True))
-        elif flagged and kind == "close":
-            words.append((wtext, True))
+            words.append((clean, True))
+        elif closes:
+            words.append((clean, True))
             hot = False
-        elif flagged:
-            words.append((wtext, True))
         else:
-            words.append((wtext, hot))
+            words.append((clean, hot))
     return words
 
 
@@ -305,9 +296,10 @@ def render_slide(seg, seg_index, chunk_text, progress, path):
         title_y += 128
 
     kicker_font = ImageFont.truetype(FONT_BOLD, 40)
-    d.rounded_rectangle(
-        [96, title_y + 36, 96 + d.textlength(seg["kicker"], font=kicker_font) + 30 * 2 + 20,
-         title_y + 116], radius=14, fill=(255, 255, 255, 0), outline=VIOLET, width=3)
+    kw = (sum(d.textlength(c, font=kicker_font) for c in seg["kicker"])
+          + 3 * (len(seg["kicker"]) - 1))
+    d.rounded_rectangle([96, title_y + 36, 96 + kw + 60, title_y + 116],
+                        radius=14, outline=VIOLET, width=3)
     letterspaced(d, (96 + 30, title_y + 54), seg["kicker"], kicker_font, GREY, tracking=3)
 
     draw_caption(img, chunk_text)
@@ -430,8 +422,8 @@ def main(outdir):
     concat = os.path.join(work, "list.txt")
     with open(concat, "w") as f:
         for png, dur, _, _ in chunk_meta:
-            f.write(f"file '{png}'\nduration {dur:.6f}\n")
-        f.write(f"file '{chunk_meta[-1][0]}'\n")
+            f.write(f"file '{os.path.abspath(png)}'\nduration {dur:.6f}\n")
+        f.write(f"file '{os.path.abspath(chunk_meta[-1][0])}'\n")
 
     srt_path = os.path.join(outdir, "captions.srt")
     with open(srt_path, "w") as f:
@@ -457,9 +449,10 @@ def main(outdir):
         "[0:v]fps=30,scale=1920:1080,setsar=1[v];"
         "[1:a]highpass=f=90,lowpass=f=9500,"
         "acompressor=threshold=-18dB:ratio=3:attack=10:release=120,"
-        "volume=2.0[vo];"
+        "volume=1.8[vo];"
         "[2:a]volume=0.10[mu];"
-        "[vo][mu]amix=inputs=2:duration=first:normalize=0[a]",
+        "[vo][mu]amix=inputs=2:duration=first:normalize=0,"
+        "alimiter=limit=0.89[a]",
         "-map", "[v]", "-map", "[a]",
         "-c:v", "libx264", "-preset", "medium", "-crf", "20",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
