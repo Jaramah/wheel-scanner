@@ -1,0 +1,264 @@
+1
+00:00:00,000 --> 00:00:04,617
+The average local business misses about forty percent of its incoming calls.
+
+2
+00:00:04,667 --> 00:00:08,817
+And every missed call is a customer who books with someone else.
+
+3
+00:00:08,867 --> 00:00:13,017
+Today we're going deep on the number one hustle from last week's video.
+
+4
+00:00:13,067 --> 00:00:15,483
+AI automation for local businesses.
+
+5
+00:00:15,533 --> 00:00:18,750
+The exact service, the tools, the pricing,
+
+6
+00:00:18,800 --> 00:00:23,583
+and how to land your first client. Let's get into it.
+
+7
+00:00:23,633 --> 00:00:29,050
+First, what are you actually selling? It's simple. An AI receptionist.
+
+8
+00:00:29,100 --> 00:00:30,817
+When a call gets missed,
+
+9
+00:00:30,867 --> 00:00:34,050
+your system instantly texts the caller back.
+
+10
+00:00:34,100 --> 00:00:36,383
+An AI agent answers their questions,
+
+11
+00:00:36,433 --> 00:00:39,283
+and books them straight into the calendar.
+
+12
+00:00:39,333 --> 00:00:42,283
+The owner does nothing. That's the magic.
+
+13
+00:00:42,333 --> 00:00:44,383
+You're not selling software.
+
+14
+00:00:44,433 --> 00:00:47,250
+You're selling recovered revenue.
+
+15
+00:00:47,300 --> 00:00:50,617
+Here's the stack, and you don't need to write code.
+
+16
+00:00:50,667 --> 00:00:53,750
+Make, or n8n, for the automation.
+
+17
+00:00:53,800 --> 00:00:56,917
+Twilio for the phone number and texting.
+
+18
+00:00:56,967 --> 00:00:59,917
+An AI model behind it for the conversation.
+
+19
+00:00:59,967 --> 00:01:04,083
+And Google Calendar, or the business's booking tool, on the end.
+
+20
+00:01:04,133 --> 00:01:08,517
+All together, that's about fifty dollars a month in running costs.
+
+21
+00:01:08,567 --> 00:01:10,217
+Remember that number,
+
+22
+00:01:10,267 --> 00:01:13,383
+because the margins here are beautiful.
+
+23
+00:01:13,433 --> 00:01:16,050
+The build itself has four steps.
+
+24
+00:01:16,100 --> 00:01:19,217
+One. A missed call triggers a webhook.
+
+25
+00:01:19,267 --> 00:01:22,850
+Two. The system sends an instant text.
+
+26
+00:01:22,900 --> 00:01:26,717
+Something like, sorry we missed you, how can we help?
+
+27
+00:01:26,767 --> 00:01:29,950
+Three. The AI handles the conversation.
+
+28
+00:01:30,000 --> 00:01:33,183
+It knows the hours, the services, and the prices,
+
+29
+00:01:33,233 --> 00:01:36,083
+because you gave it one simple document.
+
+30
+00:01:36,133 --> 00:01:41,017
+Four. It drops the booking into the calendar, and notifies the owner.
+
+31
+00:01:41,067 --> 00:01:42,383
+Build it once,
+
+32
+00:01:42,433 --> 00:01:46,917
+and you can clone it for every new client in an afternoon.
+
+33
+00:01:46,967 --> 00:01:50,083
+Now the pricing. Charge a setup fee.
+
+34
+00:01:50,133 --> 00:01:54,983
+Five hundred to fifteen hundred dollars, depending on complexity.
+
+35
+00:01:55,033 --> 00:01:56,917
+Then a monthly retainer.
+
+36
+00:01:56,967 --> 00:02:02,217
+Two hundred to five hundred a month, for hosting, monitoring and tweaks.
+
+37
+00:02:02,267 --> 00:02:03,883
+Do the math with me.
+
+38
+00:02:03,933 --> 00:02:08,150
+If one recovered customer is worth three hundred dollars to a dentist,
+
+39
+00:02:08,200 --> 00:02:12,483
+your system only has to save one booking a month to pay for itself.
+
+40
+00:02:12,533 --> 00:02:16,450
+That's the pitch. And it sells itself.
+
+41
+00:02:16,500 --> 00:02:19,250
+So how do you get client number one?
+
+42
+00:02:19,300 --> 00:02:21,450
+Pick one niche in one city.
+
+43
+00:02:21,500 --> 00:02:24,750
+Dentists. Plumbers. Salons.
+
+44
+00:02:24,800 --> 00:02:27,750
+Then make an offer that's impossible to ignore.
+
+45
+00:02:27,800 --> 00:02:29,650
+A free two week pilot.
+
+46
+00:02:29,700 --> 00:02:33,650
+You set everything up, and you track every recovered call.
+
+47
+00:02:33,700 --> 00:02:36,783
+At the end, you show them one simple report.
+
+48
+00:02:36,833 --> 00:02:41,083
+We caught twelve missed calls, and booked five appointments.
+
+49
+00:02:41,133 --> 00:02:44,950
+Then you ask for the monthly retainer, and for one referral.
+
+50
+00:02:45,000 --> 00:02:48,983
+Do that three times, and you have a real business.
+
+51
+00:02:49,033 --> 00:02:50,683
+Now the honest part.
+
+52
+00:02:50,733 --> 00:02:54,317
+Clients will churn, so keep onboarding new ones.
+
+53
+00:02:54,367 --> 00:02:58,850
+You'll get support texts at weird hours, so set clear boundaries.
+
+54
+00:02:58,900 --> 00:03:00,950
+And don't oversell the AI.
+
+55
+00:03:01,000 --> 00:03:03,283
+It handles the routine eighty percent,
+
+56
+00:03:03,333 --> 00:03:05,750
+and hands the rest to a human.
+
+57
+00:03:05,800 --> 00:03:08,350
+Under promise. Over deliver.
+
+58
+00:03:08,400 --> 00:03:11,650
+That's how you keep a retainer for years.
+
+59
+00:03:11,700 --> 00:03:13,750
+Here's your ninety day plan.
+
+60
+00:03:13,800 --> 00:03:18,083
+Month one. Build the system, and run one free pilot.
+
+61
+00:03:18,133 --> 00:03:23,183
+Month two. Turn the pilot into a paying client, and ask for referrals.
+
+62
+00:03:23,233 --> 00:03:26,217
+Month three. Get to three clients,
+
+63
+00:03:26,267 --> 00:03:29,950
+and you're at roughly a thousand dollars a month, recurring.
+
+64
+00:03:30,000 --> 00:03:33,983
+Next week, we go deep on faceless content systems.
+
+65
+00:03:34,033 --> 00:03:36,917
+The exact pipeline behind this channel.
+
+66
+00:03:36,967 --> 00:03:41,950
+Subscribe so you don't miss it. And see you in the next one.
+

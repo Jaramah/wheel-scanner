@@ -21,8 +21,14 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H = 1920, 1080
 FPS = 30
-CHUNK_PAUSE = 0.22      # silence after each caption chunk (s)
-SEGMENT_PAUSE = 0.65    # extra silence between segments (s)
+CHUNK_PAUSE = 0.26      # silence after each caption chunk (s)
+SEGMENT_PAUSE = 0.70    # extra silence between segments (s)
+
+# MBROLA diphone voice — markedly smoother than espeak's default formant
+# synth. Requires: apt install mbrola mbrola-us3 (falls back to en-us+m3).
+VOICE = "mb-us3"
+VOICE_FALLBACK = "en-us+m3"
+SPEED = "143"
 
 BG_TOP = (10, 14, 26)
 BG_BOT = (19, 26, 46)
@@ -315,9 +321,12 @@ def render_slide(seg, seg_index, chunk_text, progress, path):
 
 def tts_chunk(text, path):
     clean = text.replace("*", "")
+    voice = VOICE
+    if subprocess.run(["espeak-ng", "-v", voice, "-q", "x"],
+                      capture_output=True).returncode != 0:
+        voice = VOICE_FALLBACK
     subprocess.run(
-        ["espeak-ng", "-v", "en-us+m3", "-s", "155", "-p", "38", "-a", "180",
-         "-w", path, clean],
+        ["espeak-ng", "-v", voice, "-s", SPEED, "-a", "180", "-w", path, clean],
         check=True, capture_output=True)
     with wave.open(path, "rb") as wf:
         sr = wf.getframerate()
@@ -379,12 +388,30 @@ def fmt_srt(t):
 # Build
 # ---------------------------------------------------------------------------
 
+COLOR_NAMES = {"white": WHITE, "cyan": CYAN, "yellow": YELLOW,
+               "violet": VIOLET, "grey": GREY}
+
+
+def load_segments(outdir):
+    """Per-video script from <outdir>/script.json, else built-in SEGMENTS."""
+    path = os.path.join(outdir, "script.json")
+    if not os.path.exists(path):
+        return SEGMENTS
+    import json
+    with open(path) as f:
+        raw = json.load(f)
+    return [dict(badge=s.get("badge"), kicker=s["kicker"],
+                 title=[(t, COLOR_NAMES[c]) for t, c in s["title"]],
+                 chunks=s["chunks"]) for s in raw]
+
+
 def main(outdir):
+    segments = load_segments(outdir)
     work = os.path.join(outdir, "work")
     slides = os.path.join(work, "slides")
     os.makedirs(slides, exist_ok=True)
 
-    total_chunks = sum(len(s["chunks"]) for s in SEGMENTS)
+    total_chunks = sum(len(s["chunks"]) for s in segments)
     chunk_meta = []   # (png, duration, text, start)
     voice_parts = []
     sr = None
@@ -392,7 +419,7 @@ def main(outdir):
     chapters = []
     ci = 0
 
-    for si, seg in enumerate(SEGMENTS):
+    for si, seg in enumerate(segments):
         chapters.append((t, seg))
         for li, text in enumerate(seg["chunks"]):
             wav_path = os.path.join(work, f"tts_{ci:03d}.wav")
@@ -455,7 +482,7 @@ def main(outdir):
         "alimiter=limit=0.89:level=false[a]",
         "-map", "[v]", "-map", "[a]",
         "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
         "-shortest", out_mp4,
     ]
     subprocess.run(cmd, check=True)
