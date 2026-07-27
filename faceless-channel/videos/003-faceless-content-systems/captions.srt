@@ -1,0 +1,260 @@
+1
+00:00:00,000 --> 00:00:02,950
+Every video on this channel is made by a system.
+
+2
+00:00:03,000 --> 00:00:07,550
+One that scripts, produces and publishes, in about a day.
+
+3
+00:00:07,600 --> 00:00:09,817
+Today, I'm opening it up.
+
+4
+00:00:09,867 --> 00:00:12,850
+The exact faceless content pipeline.
+
+5
+00:00:12,900 --> 00:00:15,283
+The format, the tools, the money,
+
+6
+00:00:15,333 --> 00:00:19,550
+and the mistakes to avoid. Let's get into it.
+
+7
+00:00:19,600 --> 00:00:23,283
+Everything starts with one decision. Your format.
+
+8
+00:00:23,333 --> 00:00:27,150
+One niche. One video style. One schedule.
+
+9
+00:00:27,200 --> 00:00:29,917
+This channel? AI money topics.
+
+10
+00:00:29,967 --> 00:00:33,117
+Bold text visuals. One video a week.
+
+11
+00:00:33,167 --> 00:00:34,783
+Why so strict?
+
+12
+00:00:34,833 --> 00:00:39,383
+Because a repeatable format means every video makes the next one faster.
+
+13
+00:00:39,433 --> 00:00:43,050
+And the algorithm learns exactly who to show you to.
+
+14
+00:00:43,100 --> 00:00:46,583
+Pick a lane before you touch a single tool.
+
+15
+00:00:46,633 --> 00:00:48,750
+Next, the script.
+
+16
+00:00:48,800 --> 00:00:51,650
+And here's the part most people get wrong.
+
+17
+00:00:51,700 --> 00:00:55,283
+AI writes the draft. It shouldn't write the ideas.
+
+18
+00:00:55,333 --> 00:00:58,817
+You bring the topic, the numbers, and the opinion.
+
+19
+00:00:58,867 --> 00:01:01,217
+AI helps you structure it.
+
+20
+00:01:01,267 --> 00:01:05,250
+A hook in the first ten seconds. One clear promise.
+
+21
+00:01:05,300 --> 00:01:08,617
+Short sentences. And a payoff at the end.
+
+22
+00:01:08,667 --> 00:01:10,550
+Read it out loud once.
+
+23
+00:01:10,600 --> 00:01:15,117
+If a sentence sounds like a robot wrote it, rewrite it.
+
+24
+00:01:15,167 --> 00:01:18,850
+Now production. And it's simpler than you think.
+
+25
+00:01:18,900 --> 00:01:23,550
+Visuals? Bold text slides, generated from the script.
+
+26
+00:01:23,600 --> 00:01:26,117
+Voiceover? Text to speech,
+
+27
+00:01:26,167 --> 00:01:29,750
+or your own voice, if you have twenty quiet minutes.
+
+28
+00:01:29,800 --> 00:01:31,517
+Captions burned in,
+
+29
+00:01:31,567 --> 00:01:34,050
+because most people watch on mute.
+
+30
+00:01:34,100 --> 00:01:37,650
+Tools change every month. The system doesn't.
+
+31
+00:01:37,700 --> 00:01:40,183
+Script in. Video out.
+
+32
+00:01:40,233 --> 00:01:43,317
+Aim for under half a day per video.
+
+33
+00:01:43,367 --> 00:01:45,417
+The upload is half the game.
+
+34
+00:01:45,467 --> 00:01:49,483
+Your title and thumbnail decide whether anyone clicks at all.
+
+35
+00:01:49,533 --> 00:01:52,150
+Three or four bold words on the thumbnail.
+
+36
+00:01:52,200 --> 00:01:55,283
+A title that makes one specific promise.
+
+37
+00:01:55,333 --> 00:01:59,183
+Then chapters, captions and tags, for search.
+
+38
+00:01:59,233 --> 00:02:02,983
+And one detail people skip. The first comment.
+
+39
+00:02:03,033 --> 00:02:06,983
+Pin a question, and answer every reply for the first hour.
+
+40
+00:02:07,033 --> 00:02:09,650
+The algorithm notices.
+
+41
+00:02:09,700 --> 00:02:13,017
+So what does it pay? Here's the honest math.
+
+42
+00:02:13,067 --> 00:02:17,217
+Ads need a thousand subscribers, and four thousand watch hours.
+
+43
+00:02:17,267 --> 00:02:18,450
+In a money niche,
+
+44
+00:02:18,500 --> 00:02:22,517
+that's ten to thirty dollars per thousand views. Decent.
+
+45
+00:02:22,567 --> 00:02:24,783
+But the real money arrives later.
+
+46
+00:02:24,833 --> 00:02:27,183
+Sponsors, who pay per video.
+
+47
+00:02:27,233 --> 00:02:30,450
+And affiliate links, that pay every month.
+
+48
+00:02:30,500 --> 00:02:34,850
+Most channels see their first real dollar around month three to six.
+
+49
+00:02:34,900 --> 00:02:37,083
+Plan for that.
+
+50
+00:02:37,133 --> 00:02:38,850
+And the reality check.
+
+51
+00:02:38,900 --> 00:02:42,217
+Your first twenty videos are practice in public.
+
+52
+00:02:42,267 --> 00:02:45,383
+Views will be embarrassing. That's normal.
+
+53
+00:02:45,433 --> 00:02:48,883
+Watch your retention graph, not your view count.
+
+54
+00:02:48,933 --> 00:02:51,250
+Find the second where people leave,
+
+55
+00:02:51,300 --> 00:02:53,717
+and fix it in the next video.
+
+56
+00:02:53,767 --> 00:02:56,617
+The creators who win aren't more talented.
+
+57
+00:02:56,667 --> 00:02:59,383
+They just didn't stop.
+
+58
+00:02:59,433 --> 00:03:01,217
+Your ninety day plan.
+
+59
+00:03:01,267 --> 00:03:05,483
+Month one. Pick your format, and publish four videos.
+
+60
+00:03:05,533 --> 00:03:08,083
+Month two. Study retention,
+
+61
+00:03:08,133 --> 00:03:10,283
+and double down on what worked.
+
+62
+00:03:10,333 --> 00:03:13,283
+Month three. Apply for monetization,
+
+63
+00:03:13,333 --> 00:03:15,883
+and pitch your first affiliate deal.
+
+64
+00:03:15,933 --> 00:03:21,450
+Next week. AI digital products. From zero, to your first sale.
+
+65
+00:03:21,500 --> 00:03:24,750
+Subscribe, and I'll see you there.
+
