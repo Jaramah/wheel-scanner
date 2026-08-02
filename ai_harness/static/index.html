@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Harness</title>
+<style>
+  :root {
+    --bg: #10141a;
+    --panel: #181e27;
+    --panel-2: #1f2733;
+    --border: #2c3644;
+    --text: #e8edf4;
+    --muted: #8b97a8;
+    --accent: #d97b4f;
+    --accent-soft: #d97b4f22;
+    --user-bubble: #24405c;
+    --error: #e06c6c;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .mono, code, pre, input, select, textarea, button { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+  header h1 em { color: var(--accent); font-style: italic; }
+  .spacer { flex: 1; }
+  select, input[type=password], input[type=text], textarea {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: #171006;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-weight: 400;
+  }
+  button.ghost:hover { color: var(--text); border-color: var(--muted); }
+
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0 12px;
+  }
+  .inner { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+  .msg { margin-bottom: 20px; line-height: 1.55; font-size: 15.5px; }
+  .msg .who {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .msg.user .body {
+    background: var(--user-bubble);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    white-space: pre-wrap;
+  }
+  .msg.assistant .body { padding: 0 2px; }
+  .msg .meta {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .msg.error .body { color: var(--error); }
+
+  details.thinking {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  details.thinking summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+  details.thinking .tbody { padding: 4px 14px 12px; white-space: pre-wrap; line-height: 1.5; }
+
+  .body pre {
+    background: #0c1015;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 10px 0;
+  }
+  .body code { background: #0c1015; border-radius: 4px; padding: 1px 5px; font-size: 0.9em; }
+  .body pre code { background: none; padding: 0; }
+  .body p { margin: 8px 0; }
+  .body ul, .body ol { margin: 8px 0 8px 24px; }
+  .body h1, .body h2, .body h3 { margin: 14px 0 6px; }
+  .body a { color: var(--accent); }
+  .body blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--muted); margin: 8px 0; }
+
+  #composer {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 14px 20px 18px;
+  }
+  #composer .inner { display: flex; gap: 10px; align-items: flex-end; }
+  #prompt {
+    flex: 1;
+    resize: none;
+    min-height: 44px;
+    max-height: 220px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .hint {
+    max-width: 860px;
+    margin: 8px auto 0;
+    padding: 0 20px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Modal (key setup + settings) */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(6, 9, 13, 0.75);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    width: min(480px, 92vw);
+  }
+  .modal h2 { font-size: 20px; margin-bottom: 6px; }
+  .modal h2 em { color: var(--accent); font-style: italic; }
+  .modal p { color: var(--muted); font-size: 13.5px; line-height: 1.55; margin-bottom: 16px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .modal input, .modal textarea { width: 100%; }
+  .modal .row { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
+  .modal .err { color: var(--error); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .hidden { display: none !important; }
+
+  .welcome {
+    text-align: center;
+    color: var(--muted);
+    margin-top: 12vh;
+    font-size: 15px;
+  }
+  .welcome .big { font-size: 26px; color: var(--text); margin-bottom: 10px; }
+  .welcome .big em { color: var(--accent); font-style: italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AI <em>Harness</em></h1>
+  <div class="spacer"></div>
+  <select id="modelSelect" title="Model"></select>
+  <select id="effortSelect" title="Effort">
+    <option value="low">effort: low</option>
+    <option value="medium">effort: medium</option>
+    <option value="high" selected>effort: high</option>
+    <option value="xhigh">effort: xhigh</option>
+    <option value="max">effort: max</option>
+  </select>
+  <button class="ghost" id="settingsBtn">Settings</button>
+  <button class="ghost" id="newChatBtn">New chat</button>
+</header>
+
+<div id="chat"><div class="inner" id="chatInner">
+  <div class="welcome" id="welcome">
+    <div class="big">AI <em>Harness</em></div>
+    Chat with Claude using your own API subscription.<br>
+    Your key stays in this browser — the server never stores it.
+  </div>
+</div></div>
+
+<div id="composer">
+  <div class="inner">
+    <textarea id="prompt" placeholder="Message the AI… (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
+    <button id="sendBtn">Send</button>
+  </div>
+  <div class="hint" id="statusHint"></div>
+</div>
+
+<!-- API key setup modal -->
+<div class="overlay" id="keyOverlay">
+  <div class="modal">
+    <h2>Connect your <em>AI subscription</em></h2>
+    <p>Paste the API key from your Anthropic account
+       (<span class="mono">console.anthropic.com → API keys</span>).
+       It is stored only in this browser's localStorage and sent directly to the
+       Anthropic API through this app — never saved on the server.</p>
+    <label for="keyInput">ANTHROPIC API KEY</label>
+    <input type="password" id="keyInput" placeholder="sk-ant-…" autocomplete="off">
+    <div class="err" id="keyError"></div>
+    <div class="row">
+      <button id="keySaveBtn">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="overlay hidden" id="settingsOverlay">
+  <div class="modal">
+    <h2>Settings</h2>
+    <label for="systemInput">SYSTEM PROMPT (optional)</label>
+    <textarea id="systemInput" rows="5" placeholder="You are a helpful assistant…"></textarea>
+    <div class="row">
+      <button class="ghost" id="disconnectBtn">Disconnect key</button>
+      <div class="spacer"></div>
+      <button class="ghost" id="settingsCancelBtn">Cancel</button>
+      <button id="settingsSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get key()        { return localStorage.getItem('harness_api_key') || ''; },
+    set key(v)       { v ? localStorage.setItem('harness_api_key', v) : localStorage.removeItem('harness_api_key'); },
+    get system()     { return localStorage.getItem('harness_system') || ''; },
+    set system(v)    { v ? localStorage.setItem('harness_system', v) : localStorage.removeItem('harness_system'); },
+    get model()      { return localStorage.getItem('harness_model') || ''; },
+    set model(v)     { localStorage.setItem('harness_model', v); },
+    get history()    { try { return JSON.parse(localStorage.getItem('harness_history')) || []; } catch { return []; } },
+    set history(v)   { localStorage.setItem('harness_history', JSON.stringify(v)); },
+  };
+
+  let messages = store.history;   // [{role, content}]
+  let streaming = false;
+
+  // ---------- markdown (escape first, then format) ----------
+  const escapeHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  function renderMarkdown(src) {
+    const blocks = [];
+    let text = src.replace(/```(\w*)\n?([\s\S]*?)(```|$)/g, (_, lang, code) => {
+      blocks.push(`<pre><code>${escapeHtml(code.replace(/\n$/, ''))}</code></pre>`);
+      return ` ${blocks.length - 1} `;
+    });
+    text = escapeHtml(text)
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+      .replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>')
+      .replace(/^[-*] (.*)$/gm, '<li>$1</li>')
+      .replace(/^\d+\. (.*)$/gm, '<li>$1</li>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    text = text.replace(/(<li>[\s\S]*?<\/li>)(\n(?!<li>)|$)/g, '<ul>$1</ul>$2');
+    text = text.split(/\n{2,}/).map(p =>
+      /^<(h\d|ul|ol|blockquote|pre)/.test(p.trim()) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`
+    ).join('');
+    return text.replace(/ (\d+) /g, (_, i) => blocks[+i]);
+  }
+
+  // ---------- chat rendering ----------
+  const chatEl = $('chat'), inner = $('chatInner');
+  function scrollBottom() { chatEl.scrollTop = chatEl.scrollHeight; }
+  function hideWelcome() { const w = $('welcome'); if (w) w.remove(); }
+
+  function addUserMsg(text) {
+    hideWelcome();
+    const div = document.createElement('div');
+    div.className = 'msg user';
+    div.innerHTML = '<div class="who">You</div><div class="body"></div>';
+    div.querySelector('.body').textContent = text;
+    inner.appendChild(div);
+    scrollBottom();
+  }
+
+  function addAssistantShell() {
+    hideWelcome();
+    const div = document.createElement('div');
+    div.className = 'msg assistant';
+    div.innerHTML = '<div class="who">Assistant</div><div class="body"></div><div class="meta"></div>';
+    inner.appendChild(div);
+    scrollBottom();
+    return div;
+  }
+
+  function addErrorMsg(text) {
+    hideWelcome();
+    const div = document.createElement('div');
+    div.className = 'msg error';
+    div.innerHTML = '<div class="who">Error</div><div class="body"></div>';
+    div.querySelector('.body').textContent = text;
+    inner.appendChild(div);
+    scrollBottom();
+  }
+
+  function redrawHistory() {
+    inner.querySelectorAll('.msg').forEach(m => m.remove());
+    for (const m of messages) {
+      if (m.role === 'user') addUserMsg(m.content);
+      else {
+        const shell = addAssistantShell();
+        shell.querySelector('.body').innerHTML = renderMarkdown(m.content);
+      }
+    }
+    scrollBottom();
+  }
+
+  // ---------- key setup ----------
+  async function validateKey(key) {
+    const res = await fetch('/api/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: key }),
+    });
+    return res.json();
+  }
+
+  function populateModels(models) {
+    const sel = $('modelSelect');
+    sel.innerHTML = '';
+    for (const m of models) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name || m.id;
+      sel.appendChild(opt);
+    }
+    if (store.model && [...sel.options].some(o => o.value === store.model)) {
+      sel.value = store.model;
+    }
+    sel.onchange = () => { store.model = sel.value; };
+    store.model = sel.value;
+  }
+
+  async function connectFlow() {
+    const key = $('keyInput').value.trim();
+    if (!key) return;
+    $('keyError').textContent = '';
+    $('keySaveBtn').disabled = true;
+    $('keySaveBtn').textContent = 'Checking…';
+    try {
+      const data = await validateKey(key);
+      if (data.ok) {
+        store.key = key;
+        populateModels(data.models);
+        $('keyOverlay').classList.add('hidden');
+      } else {
+        $('keyError').textContent = data.error || 'Validation failed.';
+      }
+    } catch {
+      $('keyError').textContent = 'Could not reach the server.';
+    } finally {
+      $('keySaveBtn').disabled = false;
+      $('keySaveBtn').textContent = 'Connect';
+    }
+  }
+
+  $('keySaveBtn').onclick = connectFlow;
+  $('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') connectFlow(); });
+
+  // ---------- settings ----------
+  $('settingsBtn').onclick = () => {
+    $('systemInput').value = store.system;
+    $('settingsOverlay').classList.remove('hidden');
+  };
+  $('settingsCancelBtn').onclick = () => $('settingsOverlay').classList.add('hidden');
+  $('settingsSaveBtn').onclick = () => {
+    store.system = $('systemInput').value.trim();
+    $('settingsOverlay').classList.add('hidden');
+  };
+  $('disconnectBtn').onclick = () => {
+    store.key = '';
+    location.reload();
+  };
+
+  $('newChatBtn').onclick = () => {
+    if (streaming) return;
+    messages = [];
+    store.history = messages;
+    inner.querySelectorAll('.msg').forEach(m => m.remove());
+    $('statusHint').textContent = '';
+  };
+
+  // ---------- sending ----------
+  const promptEl = $('prompt');
+  promptEl.addEventListener('input', () => {
+    promptEl.style.height = 'auto';
+    promptEl.style.height = Math.min(promptEl.scrollHeight, 220) + 'px';
+  });
+  promptEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  $('sendBtn').onclick = send;
+
+  async function send() {
+    const text = promptEl.value.trim();
+    if (!text || streaming || !store.key) return;
+    promptEl.value = '';
+    promptEl.style.height = 'auto';
+
+    messages.push({ role: 'user', content: text });
+    addUserMsg(text);
+
+    const shell = addAssistantShell();
+    const body = shell.querySelector('.body');
+    const meta = shell.querySelector('.meta');
+    let answer = '';
+    let thinkingEl = null, thinkingText = '';
+
+    streaming = true;
+    $('sendBtn').disabled = true;
+    $('statusHint').textContent = 'Waiting for response…';
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: store.key,
+          model: $('modelSelect').value,
+          effort: $('effortSelect').value,
+          system: store.system,
+          messages,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error (${res.status})`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let failed = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          let ev;
+          try { ev = JSON.parse(part.slice(6)); } catch { continue; }
+
+          if (ev.type === 'thinking_start' && !thinkingEl) {
+            thinkingEl = document.createElement('details');
+            thinkingEl.className = 'thinking';
+            thinkingEl.innerHTML = '<summary>thinking…</summary><div class="tbody"></div>';
+            body.before(thinkingEl);
+            $('statusHint').textContent = 'Model is thinking…';
+          } else if (ev.type === 'thinking') {
+            if (!thinkingEl) {
+              thinkingEl = document.createElement('details');
+              thinkingEl.className = 'thinking';
+              thinkingEl.innerHTML = '<summary>thinking…</summary><div class="tbody"></div>';
+              body.before(thinkingEl);
+            }
+            thinkingText += ev.text;
+            thinkingEl.querySelector('.tbody').textContent = thinkingText;
+          } else if (ev.type === 'text') {
+            answer += ev.text;
+            body.innerHTML = renderMarkdown(answer);
+            $('statusHint').textContent = 'Streaming…';
+            scrollBottom();
+          } else if (ev.type === 'done') {
+            if (thinkingEl) thinkingEl.querySelector('summary').textContent = 'thinking (done)';
+            meta.textContent = `${ev.model} · ${ev.usage.input_tokens} in / ${ev.usage.output_tokens} out`;
+            $('statusHint').textContent = '';
+          } else if (ev.type === 'refusal' || ev.type === 'error') {
+            failed = ev.error;
+          }
+        }
+      }
+
+      if (failed) {
+        shell.remove();
+        messages.pop(); // let the user retry the same question
+        addErrorMsg(failed);
+        $('statusHint').textContent = '';
+      } else {
+        messages.push({ role: 'assistant', content: answer });
+        store.history = messages;
+      }
+    } catch (e) {
+      shell.remove();
+      messages.pop();
+      addErrorMsg(e.message || 'Request failed.');
+      $('statusHint').textContent = '';
+    } finally {
+      streaming = false;
+      $('sendBtn').disabled = false;
+      promptEl.focus();
+    }
+  }
+
+  // ---------- boot ----------
+  (async function boot() {
+    redrawHistory();
+    if (!store.key) return; // key modal stays visible
+    $('keyOverlay').classList.add('hidden');
+    try {
+      const data = await validateKey(store.key);
+      if (data.ok) {
+        populateModels(data.models);
+      } else {
+        store.key = '';
+        $('keyOverlay').classList.remove('hidden');
+        $('keyError').textContent = 'Saved key is no longer valid — reconnect.';
+      }
+    } catch {
+      // Server unreachable at boot; keep the saved key and let sends fail loudly.
+      populateModels([{ id: 'claude-opus-5', name: 'Claude Opus 5' }]);
+    }
+  })();
+})();
+</script>
+</body>
+</html>
