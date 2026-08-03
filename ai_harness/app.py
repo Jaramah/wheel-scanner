@@ -1,20 +1,54 @@
-"""AI Harness — bring-your-own-key chat application.
+"""AI Harness — OAuth login + per-user API keys.
 
-Users authenticate with their own Anthropic API key (from their Claude API
-subscription). The key is held client-side in the browser and passed with each
-request; this server is a stateless streaming proxy and never stores keys or
-conversation history.
+Users sign in with Google OAuth (identity only). Each user then connects their
+own Anthropic API subscription once: the key is validated, encrypted, and
+stored server-side against their account — it never returns to the browser.
+Chat requests are authorized by the session cookie and billed to that user's
+own Anthropic account.
 
-Run:  python ai_harness/app.py   (serves on PORT, default 8001)
+Configuration (env vars):
+    GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET  Google OAuth credentials
+        (create at console.cloud.google.com → APIs & Services → Credentials,
+         authorized redirect URI: <base-url>/auth/callback)
+    HARNESS_SECRET_KEY   Session/encryption secret (auto-generated if unset)
+    ALLOW_DEV_LOGIN=1    Enable a no-OAuth dev login for local testing
+    PORT                 Listen port (default 8001)
+
+Run:  python ai_harness/app.py
 """
 
 import json
 import os
+from functools import wraps
 
 import anthropic
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, redirect, request, send_from_directory, session
+
+from storage import Storage, load_secret
 
 app = Flask(__name__, static_folder="static")
+app.secret_key = load_secret()
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+storage = Storage(app.secret_key)
+
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+ALLOW_DEV_LOGIN = os.environ.get("ALLOW_DEV_LOGIN") == "1"
+
+oauth = None
+if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
+    from authlib.integrations.flask_client import OAuth
+
+    oauth = OAuth(app)
+    oauth.register(
+        "google",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
 
 DEFAULT_MODEL = "claude-opus-5"
 MAX_TOKENS = 64000
@@ -53,9 +87,9 @@ def sse(payload: dict) -> str:
 
 def api_error_payload(exc: Exception) -> dict:
     if isinstance(exc, anthropic.AuthenticationError):
-        return {"type": "error", "error": "Invalid API key. Check it and try again."}
+        return {"type": "error", "error": "Your stored API key is no longer valid — reconnect it in Settings."}
     if isinstance(exc, anthropic.PermissionDeniedError):
-        return {"type": "error", "error": "This API key doesn't have permission for that model."}
+        return {"type": "error", "error": "Your API key doesn't have permission for that model."}
     if isinstance(exc, anthropic.NotFoundError):
         return {"type": "error", "error": "Model not found for this account."}
     if isinstance(exc, anthropic.RateLimitError):
@@ -68,32 +102,129 @@ def api_error_payload(exc: Exception) -> dict:
     return {"type": "error", "error": f"Unexpected error: {exc}"}
 
 
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("sub"):
+            return jsonify({"error": "Not logged in."}), 401
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
+def list_models(client: anthropic.Anthropic) -> list:
+    models = [{"id": m.id, "name": m.display_name} for m in client.models.list()]
+    models.sort(key=lambda m: (not m["id"].startswith(DEFAULT_MODEL), m["id"]))
+    return models
+
+
+# ---------------------------------------------------------------- auth routes
+
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
-@app.post("/api/validate")
-def validate():
-    """Check the user's API key and return the models it can access."""
+@app.route("/auth/login")
+def auth_login():
+    if not oauth:
+        return jsonify({"error": "Google OAuth is not configured on this server."}), 503
+    redirect_uri = request.url_root.rstrip("/") + "/auth/callback"
+    return oauth.google.authorize_redirect(redirect_uri)
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    if not oauth:
+        return redirect("/")
+    token = oauth.google.authorize_access_token()
+    info = token.get("userinfo") or {}
+    sub = info.get("sub")
+    if not sub:
+        return jsonify({"error": "OAuth login failed."}), 401
+    storage.upsert_user(sub, info.get("email", ""), info.get("name", ""), info.get("picture", ""))
+    session["sub"] = sub
+    session.permanent = True
+    return redirect("/")
+
+
+@app.post("/auth/dev")
+def auth_dev():
+    """Local-testing login that bypasses OAuth. Enabled only via ALLOW_DEV_LOGIN=1."""
+    if not ALLOW_DEV_LOGIN:
+        return jsonify({"error": "Dev login is disabled."}), 403
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "dev@localhost").strip()
+    sub = f"dev:{email}"
+    storage.upsert_user(sub, email, email.split("@")[0], "")
+    session["sub"] = sub
+    return jsonify({"ok": True})
+
+
+@app.post("/auth/logout")
+def auth_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+# ----------------------------------------------------------------- api routes
+
+@app.get("/api/me")
+def me():
+    sub = session.get("sub")
+    if not sub:
+        return jsonify({
+            "logged_in": False,
+            "oauth_configured": bool(oauth),
+            "dev_login": ALLOW_DEV_LOGIN,
+        })
+    user = storage.get_user(sub) or {}
+    api_key = storage.get_api_key(sub)
+    payload = {
+        "logged_in": True,
+        "email": user.get("email", ""),
+        "name": user.get("name", ""),
+        "picture": user.get("picture", ""),
+        "has_key": bool(api_key),
+        "models": [],
+    }
+    if api_key:
+        try:
+            payload["models"] = list_models(anthropic.Anthropic(api_key=api_key))
+        except anthropic.AuthenticationError:
+            # Key was revoked since it was stored — force re-entry.
+            storage.set_api_key(sub, None)
+            payload["has_key"] = False
+        except (anthropic.APIStatusError, anthropic.APIConnectionError):
+            payload["models"] = [{"id": DEFAULT_MODEL, "name": "Claude Opus 5"}]
+    return jsonify(payload)
+
+
+@app.post("/api/key")
+@login_required
+def set_key():
+    """Validate and store the user's API key server-side (encrypted)."""
     data = request.get_json(silent=True) or {}
     key = (data.get("api_key") or "").strip()
     if not key:
         return jsonify({"ok": False, "error": "No API key provided."}), 400
-
-    client = anthropic.Anthropic(api_key=key)
     try:
-        models = [{"id": m.id, "name": m.display_name} for m in client.models.list()]
+        models = list_models(anthropic.Anthropic(api_key=key))
     except anthropic.AuthenticationError:
         return jsonify({"ok": False, "error": "Invalid API key."}), 401
     except anthropic.APIStatusError as e:
         return jsonify({"ok": False, "error": f"API error ({e.status_code}): {e.message}"}), 502
     except anthropic.APIConnectionError:
         return jsonify({"ok": False, "error": "Could not reach the Anthropic API."}), 502
-
-    # Put the default model first if the account has it.
-    models.sort(key=lambda m: (not m["id"].startswith(DEFAULT_MODEL), m["id"]))
+    storage.set_api_key(session["sub"], key)
     return jsonify({"ok": True, "models": models})
+
+
+@app.delete("/api/key")
+@login_required
+def delete_key():
+    storage.set_api_key(session["sub"], None)
+    return jsonify({"ok": True})
 
 
 def build_request_kwargs(model: str, messages: list, system: str, effort: str) -> dict:
@@ -112,16 +243,17 @@ def build_request_kwargs(model: str, messages: list, system: str, effort: str) -
 
 
 @app.post("/api/chat")
+@login_required
 def chat():
+    key = storage.get_api_key(session["sub"])
+    if not key:
+        return jsonify({"error": "No API key connected. Add one in Settings."}), 400
+
     data = request.get_json(silent=True) or {}
-    key = (data.get("api_key") or "").strip()
     model = (data.get("model") or DEFAULT_MODEL).strip()
     system = (data.get("system") or "").strip()
     effort = (data.get("effort") or "").strip()
     messages = data.get("messages") or []
-
-    if not key:
-        return jsonify({"error": "No API key provided."}), 400
     if not messages:
         return jsonify({"error": "No messages provided."}), 400
 

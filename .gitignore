@@ -8,3 +8,4 @@ env/
 *.csv
 *.xlsx
 *.db
+ai_harness/instance/
