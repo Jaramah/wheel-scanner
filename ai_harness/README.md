@@ -1,8 +1,21 @@
 # AI Harness
 
-A chat application where users **sign in with OAuth** and chat with Claude on
-**their own AI subscription**: each user connects their personal Anthropic API
-key once, and all usage bills to their own Anthropic account.
+A chat application where users **sign in with OAuth** and chat with Claude,
+paying one of two ways:
+
+1. **Bring your own key** — connect a personal Anthropic API key once; usage
+   bills to the user's own Anthropic account (pay-as-you-go).
+2. **Subscribe to a plan** — chat on the app-owned API key
+   (`HARNESS_APP_API_KEY`) with a metered monthly allowance. **Billing is
+   currently stubbed**: choosing a plan activates it instantly and free, so
+   the metering/quota experience can be tested end-to-end before wiring up
+   Stripe (see `/api/subscribe` in `app.py` for the integration points).
+
+Plans meter usage in *weighted tokens* (`input + 5 × output`, mirroring the
+input/output price ratio) per calendar month, enforce per-plan model lists
+(Starter: Sonnet/Haiku; Pro: adds Opus), block requests past the allowance
+with a friendly limit message, and show a live usage chip in the header.
+BYO-key usage is metered too (shown in Settings) but never limited.
 
 > Why not "Sign in with Claude"? Anthropic prohibits (and server-side blocks)
 > consumer-subscription OAuth tokens outside Claude Code / Claude.ai, and
@@ -47,6 +60,7 @@ for local use). Then:
 ```sh
 export GOOGLE_CLIENT_ID=…
 export GOOGLE_CLIENT_SECRET=…
+export HARNESS_APP_API_KEY=…  # optional; enables subscription plans
 export HARNESS_SECRET_KEY=…   # optional; auto-generated + persisted if unset
 python ai_harness/app.py       # http://localhost:8001 (PORT to override)
 ```
@@ -68,6 +82,7 @@ directory is gitignored; back it up or mount it in deployment.
 | `/auth/login` → `/auth/callback` | GET | Google OAuth flow |
 | `/auth/dev` | POST | Dev login (only with `ALLOW_DEV_LOGIN=1`) |
 | `/auth/logout` | POST | Clear session |
-| `/api/me` | GET | Session info: user, key status, available models |
+| `/api/me` | GET | Session info: user, key/plan status, usage, plan catalog, models |
 | `/api/key` | POST / DELETE | Validate + store, or remove, the user's API key |
-| `/api/chat` | POST | Streaming chat (SSE): `{model, effort, system, messages}` |
+| `/api/subscribe` | POST | Activate (`{plan: "starter"\|"pro"}`) or cancel (`{plan: null}`) a plan — billing stubbed |
+| `/api/chat` | POST | Streaming chat (SSE): `{model, effort, system, messages}`; 402 when a plan's monthly allowance is exhausted |

@@ -16,6 +16,7 @@
     --accent-soft: #d97b4f22;
     --user-bubble: #24405c;
     --error: #e06c6c;
+    --good: #6fbf8f;
     --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -84,6 +85,11 @@
     width: 100%;
     background: #fff; color: #1a1a1a;
     padding: 10px 14px; font-size: 14px;
+  }
+  #usageChip {
+    display: none;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11.5px;
   }
 
   #chat { flex: 1; overflow-y: auto; padding: 24px 0 12px; }
@@ -163,6 +169,8 @@
     background: rgba(6, 9, 13, 0.82);
     display: flex; align-items: center; justify-content: center;
     z-index: 10;
+    overflow-y: auto;
+    padding: 20px 0;
   }
   .modal {
     background: var(--panel);
@@ -170,16 +178,56 @@
     border-radius: var(--radius);
     padding: 28px;
     width: min(480px, 92vw);
+    margin: auto;
   }
+  .modal.wide { width: min(720px, 94vw); }
   .modal h2 { font-size: 20px; margin-bottom: 6px; }
   .modal h2 em { color: var(--accent); font-style: italic; }
-  .modal p { color: var(--muted); font-size: 13.5px; line-height: 1.55; margin-bottom: 16px; }
+  .modal h3 { font-size: 15px; margin-bottom: 4px; }
+  .modal p { color: var(--muted); font-size: 13.5px; line-height: 1.55; margin-bottom: 14px; }
   .modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; font-family: ui-monospace, Menlo, Consolas, monospace; }
   .modal input, .modal textarea { width: 100%; }
   .modal .row { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; align-items: center; }
   .modal .err { color: var(--error); font-size: 13px; margin-top: 10px; min-height: 18px; }
-  .modal .divider { border-top: 1px solid var(--border); margin: 18px 0 4px; }
   .hidden { display: none !important; }
+  .stub { color: var(--accent); }
+
+  .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 16px; }
+  @media (max-width: 640px) { .paths { grid-template-columns: 1fr; } }
+  .path {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+  }
+  .path .grow { flex: 1; }
+  .plan-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: var(--panel);
+  }
+  .plan-card .top { display: flex; align-items: baseline; gap: 8px; }
+  .plan-card .name { font-size: 15px; font-weight: 600; }
+  .plan-card .price { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--accent); }
+  .plan-card .desc { color: var(--muted); font-size: 12.5px; margin: 4px 0 8px; line-height: 1.45; }
+  .plan-card .desc .mods { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+  .plan-card button { width: 100%; }
+  .plan-card.active { border-color: var(--accent); }
+  .plan-card.active .badge {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 10px; color: var(--good); margin-left: auto;
+  }
+
+  .usage-bar {
+    height: 8px; border-radius: 4px; background: var(--panel-2);
+    border: 1px solid var(--border); overflow: hidden; margin: 8px 0 4px;
+  }
+  .usage-bar .fill { height: 100%; background: var(--accent); width: 0; transition: width 0.4s; }
+  .usage-line { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--muted); }
 
   .welcome { text-align: center; color: var(--muted); margin-top: 12vh; font-size: 15px; }
   .welcome .big { font-size: 26px; color: var(--text); margin-bottom: 10px; }
@@ -192,6 +240,7 @@
   <h1>AI <em>Harness</em></h1>
   <div class="spacer"></div>
   <div id="userChip"><img id="userPic" alt=""><span id="userEmail"></span></div>
+  <button class="ghost" id="usageChip" title="Plan usage — open Settings"></button>
   <select id="modelSelect" title="Model"></select>
   <select id="effortSelect" title="Effort">
     <option value="low">effort: low</option>
@@ -207,8 +256,8 @@
 <div id="chat"><div class="inner" id="chatInner">
   <div class="welcome" id="welcome">
     <div class="big">AI <em>Harness</em></div>
-    Sign in and chat with Claude on your own AI subscription.<br>
-    Your API key is encrypted server-side and never returns to the browser.
+    Sign in, then chat on your own API key or an in-app plan.<br>
+    Keys are encrypted server-side and never return to the browser.
   </div>
 </div></div>
 
@@ -224,16 +273,14 @@
 <div class="overlay hidden" id="loginOverlay">
   <div class="modal">
     <h2>Sign in to <em>AI Harness</em></h2>
-    <p>Log in with your Google account, then connect your own Anthropic API
-       subscription. Usage is billed to your own account — this app just
-       provides the harness.</p>
+    <p>Log in with your Google account, then choose how to power your chats —
+       your own Anthropic API key, or an in-app plan.</p>
     <button class="google" id="googleBtn">
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
       Continue with Google
     </button>
     <div class="err" id="loginError"></div>
     <div id="devLoginBox" class="hidden">
-      <div class="divider"></div>
       <label for="devEmail">DEV LOGIN (local testing only)</label>
       <input type="email" id="devEmail" placeholder="you@example.com">
       <div class="row"><button class="ghost" id="devLoginBtn">Dev login</button></div>
@@ -241,22 +288,35 @@
   </div>
 </div>
 
-<!-- API key setup modal -->
-<div class="overlay hidden" id="keyOverlay">
-  <div class="modal">
-    <h2>Connect your <em>AI subscription</em></h2>
-    <p>Paste the API key from your Anthropic account
-       (<a class="mono" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--accent)">console.anthropic.com → API keys</a>).
-       It is validated, encrypted, and stored against your account on the
-       server — it never comes back to the browser. All usage is billed to
-       your own Anthropic account.</p>
-    <label for="keyInput">ANTHROPIC API KEY</label>
-    <input type="password" id="keyInput" placeholder="sk-ant-…" autocomplete="off">
-    <div class="err" id="keyError"></div>
+<!-- Get-started modal: pick a payment path -->
+<div class="overlay hidden" id="startOverlay">
+  <div class="modal wide">
+    <h2>Choose how to <em>power</em> your chats</h2>
+    <p>Both paths end in the same chat — they differ only in who pays Anthropic.</p>
+    <div class="paths">
+      <div class="path">
+        <h3>Bring your own key</h3>
+        <p class="grow">Use your Anthropic API account
+           (<a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--accent)">console.anthropic.com</a>).
+           Usage bills to you directly, pay-as-you-go. The key is encrypted
+           server-side and never returns to the browser.</p>
+        <label for="keyInput">ANTHROPIC API KEY</label>
+        <input type="password" id="keyInput" placeholder="sk-ant-…" autocomplete="off">
+        <div class="err" id="keyError"></div>
+        <div class="row"><button id="keySaveBtn">Connect key</button></div>
+      </div>
+      <div class="path" id="plansPath">
+        <h3>Subscribe to a plan</h3>
+        <p>No key needed — chat on the app's account with a monthly allowance.
+           <span class="stub" id="stubNote">Billing stub: plans activate instantly, free, for testing.</span></p>
+        <div id="planCards" class="grow"></div>
+        <div class="err" id="planError"></div>
+      </div>
+    </div>
     <div class="row">
-      <button class="ghost" id="keyLogoutBtn">Log out</button>
+      <button class="ghost" id="startCloseBtn">Close</button>
       <div class="spacer"></div>
-      <button id="keySaveBtn">Connect</button>
+      <button class="ghost" id="startLogoutBtn">Log out</button>
     </div>
   </div>
 </div>
@@ -265,10 +325,20 @@
 <div class="overlay hidden" id="settingsOverlay">
   <div class="modal">
     <h2>Settings</h2>
+
+    <label>PLAN &amp; USAGE</label>
+    <div id="planStatus" class="usage-line" style="margin-bottom:4px"></div>
+    <div class="usage-bar" id="usageBarWrap"><div class="fill" id="usageFill"></div></div>
+    <div class="usage-line" id="usageDetail"></div>
+    <div class="row" style="justify-content:flex-start; margin-top:10px;">
+      <button class="ghost" id="managePaymentBtn">Key &amp; plan options</button>
+      <button class="ghost hidden" id="cancelPlanBtn">Cancel plan</button>
+    </div>
+
     <label for="systemInput">SYSTEM PROMPT (optional)</label>
-    <textarea id="systemInput" rows="5" placeholder="You are a helpful assistant…"></textarea>
+    <textarea id="systemInput" rows="4" placeholder="You are a helpful assistant…"></textarea>
+
     <div class="row">
-      <button class="ghost" id="disconnectKeyBtn">Replace API key</button>
       <button class="ghost" id="logoutBtn">Log out</button>
       <div class="spacer"></div>
       <button class="ghost" id="settingsCancelBtn">Cancel</button>
@@ -289,8 +359,12 @@
     set history(v) { localStorage.setItem('harness_history', JSON.stringify(v)); },
   };
 
+  let ME = {};                    // /api/me payload
   let messages = store.history;   // [{role, content}]
   let streaming = false;
+
+  const fmtTokens = n => n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M'
+                        : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n);
 
   // ---------- markdown (escape first, then format) ----------
   const escapeHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -298,7 +372,7 @@
     const blocks = [];
     let text = src.replace(/```(\w*)\n?([\s\S]*?)(```|$)/g, (_, lang, code) => {
       blocks.push(`<pre><code>${escapeHtml(code.replace(/\n$/, ''))}</code></pre>`);
-      return ` ${blocks.length - 1} `;
+      return ` ${blocks.length - 1} `;
     });
     text = escapeHtml(text)
       .replace(/`([^`\n]+)`/g, '<code>$1</code>')
@@ -315,7 +389,7 @@
     text = text.split(/\n{2,}/).map(p =>
       /^<(h\d|ul|ol|blockquote|pre)/.test(p.trim()) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`
     ).join('');
-    return text.replace(/ (\d+) /g, (_, i) => blocks[+i]);
+    return text.replace(/ (\d+) /g, (_, i) => blocks[+i]);
   }
 
   // ---------- chat rendering ----------
@@ -365,7 +439,7 @@
     scrollBottom();
   }
 
-  // ---------- models ----------
+  // ---------- models & usage chip ----------
   function populateModels(models) {
     const sel = $('modelSelect');
     sel.innerHTML = '';
@@ -381,6 +455,17 @@
     sel.onchange = () => { store.model = sel.value; };
     if (sel.value) store.model = sel.value;
   }
+
+  function renderUsageChip(usage) {
+    const chip = $('usageChip');
+    if (ME.plan && usage && usage.allowance) {
+      chip.textContent = `${ME.plan_name} · ${usage.pct}% used`;
+      chip.style.display = 'inline-block';
+    } else {
+      chip.style.display = 'none';
+    }
+  }
+  $('usageChip').onclick = () => $('settingsBtn').click();
 
   // ---------- auth flows ----------
   async function jsonPost(url, body) {
@@ -405,9 +490,46 @@
     location.reload();
   }
   $('logoutBtn').onclick = logout;
-  $('keyLogoutBtn').onclick = logout;
+  $('startLogoutBtn').onclick = logout;
 
-  // ---------- key setup ----------
+  // ---------- get-started modal ----------
+  function renderPlanCards() {
+    const wrap = $('planCards');
+    wrap.innerHTML = '';
+    if (!ME.subscriptions_available) {
+      $('stubNote').textContent = 'Not available: the server has no app API key configured (HARNESS_APP_API_KEY).';
+      return;
+    }
+    for (const p of ME.plans || []) {
+      const card = document.createElement('div');
+      card.className = 'plan-card' + (ME.plan === p.id ? ' active' : '');
+      card.innerHTML = `
+        <div class="top"><span class="name"></span><span class="price"></span>
+          ${ME.plan === p.id ? '<span class="badge">CURRENT</span>' : ''}</div>
+        <div class="desc"><span class="blurb"></span><br>
+          <span class="mods"></span></div>
+        <button data-plan="${p.id}">${ME.plan === p.id ? 'Keep plan' : 'Choose ' + p.name}</button>`;
+      card.querySelector('.name').textContent = p.name;
+      card.querySelector('.price').textContent = p.price;
+      card.querySelector('.blurb').textContent = p.blurb + ` ${fmtTokens(p.allowance)} usage tokens / month.`;
+      card.querySelector('.mods').textContent = p.models.join(' · ');
+      card.querySelector('button').onclick = async (e) => {
+        e.target.disabled = true;
+        const { status, data } = await jsonPost('/api/subscribe', { plan: p.id });
+        if (status === 200 && data.ok) location.reload();
+        else { $('planError').textContent = data.error || 'Could not activate plan.'; e.target.disabled = false; }
+      };
+      wrap.appendChild(card);
+    }
+  }
+
+  function openStart(closable) {
+    renderPlanCards();
+    $('startCloseBtn').classList.toggle('hidden', !closable);
+    $('startOverlay').classList.remove('hidden');
+  }
+  $('startCloseBtn').onclick = () => $('startOverlay').classList.add('hidden');
+
   async function saveKey() {
     const key = $('keyInput').value.trim();
     if (!key) return;
@@ -416,26 +538,44 @@
     $('keySaveBtn').textContent = 'Checking…';
     try {
       const { status, data } = await jsonPost('/api/key', { api_key: key });
-      if (status === 200 && data.ok) {
-        $('keyInput').value = '';
-        populateModels(data.models);
-        $('keyOverlay').classList.add('hidden');
-      } else {
-        $('keyError').textContent = data.error || 'Validation failed.';
-      }
+      if (status === 200 && data.ok) location.reload();
+      else $('keyError').textContent = data.error || 'Validation failed.';
     } catch {
       $('keyError').textContent = 'Could not reach the server.';
     } finally {
       $('keySaveBtn').disabled = false;
-      $('keySaveBtn').textContent = 'Connect';
+      $('keySaveBtn').textContent = 'Connect key';
     }
   }
   $('keySaveBtn').onclick = saveKey;
   $('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveKey(); });
 
   // ---------- settings ----------
+  function renderSettings() {
+    const u = ME.usage || {};
+    if (ME.plan) {
+      $('planStatus').textContent = `${ME.plan_name} plan — resets monthly`;
+      $('usageBarWrap').style.display = 'block';
+      $('usageFill').style.width = (u.pct || 0) + '%';
+      $('usageDetail').textContent =
+        `${fmtTokens(u.used || 0)} / ${fmtTokens(u.allowance || 0)} usage tokens (${u.pct || 0}%) · ` +
+        `${u.messages || 0} messages this month`;
+      $('cancelPlanBtn').classList.remove('hidden');
+    } else {
+      $('planStatus').textContent = ME.has_key
+        ? 'Using your own API key (pay-as-you-go, billed by Anthropic)'
+        : 'No key or plan connected';
+      $('usageBarWrap').style.display = 'none';
+      $('usageDetail').textContent = u.messages
+        ? `This month on your key: ${fmtTokens(u.input_tokens)} in / ${fmtTokens(u.output_tokens)} out · ${u.messages} messages`
+        : '';
+      $('cancelPlanBtn').classList.add('hidden');
+    }
+  }
+
   $('settingsBtn').onclick = () => {
     $('systemInput').value = store.system;
+    renderSettings();
     $('settingsOverlay').classList.remove('hidden');
   };
   $('settingsCancelBtn').onclick = () => $('settingsOverlay').classList.add('hidden');
@@ -443,10 +583,13 @@
     store.system = $('systemInput').value.trim();
     $('settingsOverlay').classList.add('hidden');
   };
-  $('disconnectKeyBtn').onclick = async () => {
-    await fetch('/api/key', { method: 'DELETE' });
+  $('managePaymentBtn').onclick = () => {
     $('settingsOverlay').classList.add('hidden');
-    $('keyOverlay').classList.remove('hidden');
+    openStart(true);
+  };
+  $('cancelPlanBtn').onclick = async () => {
+    const { status, data } = await jsonPost('/api/subscribe', { plan: null });
+    if (status === 200 && data.ok) location.reload();
   };
 
   $('newChatBtn').onclick = () => {
@@ -543,6 +686,7 @@
           } else if (ev.type === 'done') {
             if (thinkingEl) thinkingEl.querySelector('summary').textContent = 'thinking (done)';
             meta.textContent = `${ev.model} · ${ev.usage.input_tokens} in / ${ev.usage.output_tokens} out`;
+            if (ev.quota) { ME.usage = ev.quota; renderUsageChip(ev.quota); }
             $('statusHint').textContent = '';
           } else if (ev.type === 'refusal' || ev.type === 'error') {
             failed = ev.error;
@@ -574,33 +718,33 @@
   // ---------- boot ----------
   (async function boot() {
     redrawHistory();
-    let me = {};
     try {
-      me = await (await fetch('/api/me')).json();
+      ME = await (await fetch('/api/me')).json();
     } catch {
       $('statusHint').textContent = 'Server unreachable.';
       return;
     }
 
-    if (!me.logged_in) {
+    if (!ME.logged_in) {
       $('loginOverlay').classList.remove('hidden');
-      if (!me.oauth_configured) {
+      if (!ME.oauth_configured) {
         $('googleBtn').disabled = true;
         $('loginError').textContent = 'Google OAuth is not configured on this server (set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).';
       }
-      if (me.dev_login) $('devLoginBox').classList.remove('hidden');
+      if (ME.dev_login) $('devLoginBox').classList.remove('hidden');
       return;
     }
 
-    $('userEmail').textContent = me.email || me.name || '';
-    if (me.picture) { $('userPic').src = me.picture; } else { $('userPic').style.display = 'none'; }
+    $('userEmail').textContent = ME.email || ME.name || '';
+    if (ME.picture) { $('userPic').src = ME.picture; } else { $('userPic').style.display = 'none'; }
     $('userChip').style.display = 'flex';
+    renderUsageChip(ME.usage);
 
-    if (!me.has_key) {
-      $('keyOverlay').classList.remove('hidden');
+    if (!ME.plan && !ME.has_key) {
+      openStart(false);
       return;
     }
-    populateModels(me.models && me.models.length ? me.models : [{ id: 'claude-opus-5', name: 'Claude Opus 5' }]);
+    populateModels(ME.models && ME.models.length ? ME.models : [{ id: 'claude-opus-5', name: 'Claude Opus 5' }]);
   })();
 })();
 </script>

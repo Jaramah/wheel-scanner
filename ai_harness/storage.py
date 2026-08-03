@@ -1,7 +1,9 @@
-"""SQLite-backed user store for the AI Harness.
+"""SQLite-backed user + usage store for the AI Harness.
 
 Users are keyed by their OAuth subject (`sub`). Each user's Anthropic API key
-is encrypted at rest with a Fernet key derived from the app secret.
+is encrypted at rest with a Fernet key derived from the app secret. Usage is
+metered per user per calendar month (UTC) for quota enforcement on
+subscription plans.
 """
 
 import base64
@@ -50,10 +52,27 @@ class Storage:
                        name        TEXT,
                        picture     TEXT,
                        api_key_enc TEXT,
+                       plan        TEXT,
                        created_at  TEXT DEFAULT (datetime('now'))
                    )"""
             )
+            self._conn.execute(
+                """CREATE TABLE IF NOT EXISTS usage (
+                       sub           TEXT NOT NULL,
+                       period        TEXT NOT NULL,
+                       input_tokens  INTEGER NOT NULL DEFAULT 0,
+                       output_tokens INTEGER NOT NULL DEFAULT 0,
+                       messages      INTEGER NOT NULL DEFAULT 0,
+                       PRIMARY KEY (sub, period)
+                   )"""
+            )
+            # Migration for databases created before the plan column existed.
+            cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(users)")}
+            if "plan" not in cols:
+                self._conn.execute("ALTER TABLE users ADD COLUMN plan TEXT")
             self._conn.commit()
+
+    # ------------------------------------------------------------------ users
 
     def upsert_user(self, sub: str, email: str, name: str, picture: str) -> None:
         with self._lock:
@@ -89,3 +108,35 @@ class Storage:
         except InvalidToken:
             # Secret changed since the key was stored; the user must re-enter it.
             return None
+
+    def set_plan(self, sub: str, plan: str | None) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE users SET plan = ? WHERE sub = ?", (plan, sub)
+            )
+            self._conn.commit()
+
+    # ------------------------------------------------------------------ usage
+
+    def add_usage(self, sub: str, period: str, input_tokens: int, output_tokens: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO usage (sub, period, input_tokens, output_tokens, messages)
+                   VALUES (?, ?, ?, ?, 1)
+                   ON CONFLICT(sub, period) DO UPDATE SET
+                       input_tokens  = input_tokens  + excluded.input_tokens,
+                       output_tokens = output_tokens + excluded.output_tokens,
+                       messages      = messages + 1""",
+                (sub, period, input_tokens, output_tokens),
+            )
+            self._conn.commit()
+
+    def get_usage(self, sub: str, period: str) -> dict:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT input_tokens, output_tokens, messages FROM usage WHERE sub = ? AND period = ?",
+                (sub, period),
+            ).fetchone()
+        if not row:
+            return {"input_tokens": 0, "output_tokens": 0, "messages": 0}
+        return dict(row)
